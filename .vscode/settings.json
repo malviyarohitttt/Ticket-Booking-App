@@ -1,0 +1,11 @@
+{
+  "prisma.pinToPrisma6": true,
+  "cSpell.words": [
+    "autoincrement",
+    "batchable",
+    "firstname",
+    "lastname",
+    "TOPUP",
+    "txns"
+  ]
+}
