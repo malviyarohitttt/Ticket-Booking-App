@@ -74,17 +74,5 @@ export class CreateEventRequestDto {
   @IsNumber()
   @Min(1)
   @ApiProperty()
-  readonly ticketPrice!: number;
-
-  @IsNotEmpty()
-  @IsNumber()
-  @ApiProperty()
-  @Min(1)
-  readonly totalRows!: number;
-
-  @IsNotEmpty()
-  @IsNumber()
-  @ApiProperty()
-  @Min(1)
-  readonly seatsPerRows!: number;
+  readonly price!: number;
 }

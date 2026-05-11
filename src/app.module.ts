@@ -18,6 +18,7 @@ import { BookingsModule } from './bookings/bookings.module';
 import { WalletModule } from './wallet/wallet.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ReportingModule } from './reporting/reporting.module';
+import { SchedulingModule } from './scheduling/scheduling.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { ReportingModule } from './reporting/reporting.module';
     WalletModule,
     PaymentsModule,
     ReportingModule,
+    SchedulingModule,
   ],
   controllers: [AppController],
   providers: [

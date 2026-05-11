@@ -1,326 +1,521 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Injectable } from '@nestjs/common';
+import { Prisma } from 'src/generated/prisma/client';
 import { PrismaService } from 'src/prisma';
 
 @Injectable()
 export class ReportingService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getAdminDashboardData() {
-    return await this.prisma.$transaction(async (tx) => {
-      const totalUsers = await tx.user.count({
-        where: { role: 'User' },
+  async getAdminDashboard() {
+    try {
+      const [
+        totalEvents,
+        completedEvents,
+        activeEvents,
+        suspendedEvents,
+
+        totalBookings,
+        confirmedBookings,
+        pendingBookings,
+
+        totalUsers,
+        totalManagers,
+
+        totalRevenue,
+
+        events,
+      ] = await Promise.all([
+        this.prisma.event.count(),
+
+        this.prisma.event.count({
+          where: {
+            status: 'Completed',
+          },
+        }),
+
+        this.prisma.event.count({
+          where: {
+            status: 'Active',
+          },
+        }),
+
+        this.prisma.event.count({
+          where: {
+            status: 'Suspended',
+          },
+        }),
+
+        this.prisma.booking.count(),
+
+        this.prisma.booking.count({
+          where: {
+            status: 'Confirmed',
+          },
+        }),
+
+        this.prisma.booking.count({
+          where: {
+            status: 'Pending',
+          },
+        }),
+
+        this.prisma.user.count(),
+
+        this.prisma.user.count({
+          where: {
+            role: 'Manager',
+          },
+        }),
+
+        this.prisma.booking.aggregate({
+          where: {
+            status: 'Confirmed',
+          },
+          _sum: {
+            total: true,
+          },
+        }),
+
+        this.prisma.event.findMany({
+          include: {
+            manager: {
+              select: {
+                id: true,
+                firstname: true,
+                lastname: true,
+                email: true,
+              },
+            },
+
+            bookings: {
+              where: {
+                status: 'Confirmed',
+              },
+
+              include: {
+                splits: true,
+              },
+            },
+          },
+
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
+      ]);
+
+      const eventWiseReport = events.map((event) => {
+        const totalSales = event.bookings.reduce(
+          (sum: number, booking) => sum + Number(booking.total),
+          0,
+        );
+
+        const allSplits = event.bookings.flatMap((booking) => booking.splits);
+
+        const adminEarnings = allSplits
+          .filter((split) => split.splitType === 'Admin')
+          .reduce((sum: number, split) => sum + Number(split.amount), 0);
+
+        const managerEarnings = allSplits
+          .filter((split) => split.splitType === 'Manager')
+          .reduce((sum: number, split) => sum + Number(split.amount), 0);
+
+        const remainingSeats = event.totalSeats - event.bookedSeats;
+
+        const estimatedLoss =
+          event.status === 'Completed'
+            ? remainingSeats * Number(event.price)
+            : 0;
+
+        const occupancyRate =
+          event.totalSeats > 0
+            ? ((event.bookedSeats / event.totalSeats) * 100).toFixed(2)
+            : '0';
+
+        return {
+          eventId: event.id,
+          title: event.title,
+          performer: event.performer,
+          venue: event.venue,
+          city: event.city,
+          country: event.country,
+          eventDate: event.date,
+          eventStatus: event.status,
+          manager: {
+            id: event.manager.id,
+            name: `${event.manager.firstname} ${event.manager.lastname}`,
+            email: event.manager.email,
+          },
+          price: event.price,
+          totalSeats: event.totalSeats,
+          bookedSeats: event.bookedSeats,
+          remainingSeats,
+          occupancyRate: `${occupancyRate}%`,
+          totalConfirmedBookings: event.bookings.length,
+          totalSales,
+          adminEarnings,
+          managerEarnings,
+          estimatedLoss,
+          createdAt: event.createdAt,
+        };
       });
 
-      const totalManagers = await tx.user.count({
-        where: { role: 'Manager' },
-      });
+      const totalAdminRevenue = eventWiseReport.reduce(
+        (sum, event) => sum + event.adminEarnings,
+        0,
+      );
 
-      const suspendedUsers = await tx.user.count({
-        where: { status: 'Suspended' },
-      });
+      const totalManagerRevenue = eventWiseReport.reduce(
+        (sum, event) => sum + event.managerEarnings,
+        0,
+      );
 
-      const totalEvents = await tx.event.count();
+      const totalEstimatedLoss = eventWiseReport.reduce(
+        (sum, event) => sum + event.estimatedLoss,
+        0,
+      );
 
-      const activeEvents = await tx.event.count({
-        where: { status: 'Active' },
-      });
-
-      const suspendedEvents = await tx.event.count({
-        where: { status: 'Suspended' },
-      });
-
-      const confirmedBookings = await tx.booking.count({
-        where: { status: 'CONFIRMED' },
-      });
-
-      const pendingBookings = await tx.booking.count({
-        where: { status: 'PENDING' },
-      });
-
-      const managerCommissions = await tx.revenueSplit.aggregate({
-        where: {
-          splitType: 'MANAGER',
-        },
-        _sum: { amount: true },
-      });
-
-      const adminCommissions = await tx.revenueSplit.aggregate({
-        where: {
-          splitType: 'ADMIN',
-        },
-        _sum: { amount: true },
-      });
-
-      const seats = await tx.event.aggregate({
-        _sum: {
-          totalSeats: true,
-          bookedSeats: true,
-        },
-      });
-
-      const totalSeatCount = seats._sum.totalSeats || 0;
-      const bookedSeatCount = seats._sum.bookedSeats || 0;
+      const recentEvents = eventWiseReport.slice(0, 5);
 
       return {
         status: 'success',
-        data: {
-          totalUsers,
-          totalManagers,
-          suspendedUsers,
-
-          totalEvents,
-          activeEvents,
-          suspendedEvents,
-
-          bookings: {
-            confirmed: confirmedBookings,
-            pending: pendingBookings,
+        dashboard: {
+          overview: {
+            totalEvents,
+            activeEvents,
+            completedEvents,
+            suspendedEvents,
+            totalBookings,
+            confirmedBookings,
+            pendingBookings,
+            totalUsers,
+            totalManagers,
+            totalRevenue: totalRevenue._sum.total || 0,
+            totalAdminRevenue,
+            totalManagerRevenue,
+            totalEstimatedLoss,
           },
-
-          adminEarnings: adminCommissions._sum.amount || 0,
-          managerEarnings: managerCommissions._sum.amount || 0,
-
-          totalSeats: totalSeatCount,
-          bookedSeats: bookedSeatCount,
-          remainingSeats: totalSeatCount - bookedSeatCount,
+          recentEvents,
+          eventWiseReport,
         },
       };
-    });
+    } catch (error) {
+      console.log(error);
+
+      throw new Error('Failed to generate admin dashboard');
+    }
   }
 
-  async getManagerDashboardData(managerId: number) {
-    return await this.prisma.$transaction(async (tx) => {
-      const totalEvents = await tx.event.count({
-        where: {
+  async getManagerDashboard(managerId: number) {
+    try {
+      const eventManagerId = { managerId };
+      const confirmedBooking: Prisma.BookingWhereInput = {
+        event: {
           managerId,
         },
-      });
+        status: 'Confirmed',
+      };
 
-      const activeEvents = await tx.event.count({
-        where: {
+      const pendingBooking: Prisma.BookingWhereInput = {
+        event: {
           managerId,
-          status: 'Active',
         },
-      });
+        status: 'Pending',
+      };
 
-      const suspendedEvents = await tx.event.count({
-        where: {
-          managerId,
-          status: 'Suspended',
-        },
-      });
+      const [
+        totalEvents,
+        activeEvents,
+        suspendedEvents,
+        completedEvents,
+        totalConfirmedBookings,
+        totalPendingBookings,
+        sales,
+        managerRevenue,
+        adminRevenue,
+        seatStats,
+        events,
+      ] = await Promise.all([
+        this.prisma.event.count({
+          where: eventManagerId,
+        }),
 
-      const totalConfirmedBookings = await tx.booking.count({
-        where: {
-          event: {
+        this.prisma.event.count({
+          where: {
+            ...eventManagerId,
+            status: 'Active',
+          },
+        }),
+
+        this.prisma.event.count({
+          where: {
+            ...eventManagerId,
+            status: 'Suspended',
+          },
+        }),
+
+        this.prisma.event.count({
+          where: {
+            ...eventManagerId,
+            status: 'Completed',
+          },
+        }),
+
+        this.prisma.booking.count({
+          where: confirmedBooking,
+        }),
+
+        this.prisma.booking.count({
+          where: pendingBooking,
+        }),
+
+        this.prisma.booking.aggregate({
+          where: confirmedBooking,
+
+          _sum: {
+            total: true,
+          },
+
+          _avg: {
+            total: true,
+          },
+        }),
+
+        this.prisma.revenueSplit.aggregate({
+          where: {
+            splitType: 'Manager',
+            booking: confirmedBooking,
+          },
+
+          _sum: {
+            amount: true,
+          },
+        }),
+
+        this.prisma.revenueSplit.aggregate({
+          where: {
+            splitType: 'Admin',
+            booking: confirmedBooking,
+          },
+
+          _sum: {
+            amount: true,
+          },
+        }),
+
+        this.prisma.event.aggregate({
+          where: eventManagerId,
+
+          _sum: {
+            totalSeats: true,
+            bookedSeats: true,
+          },
+        }),
+
+        this.prisma.event.findMany({
+          where: {
             managerId,
           },
-          status: 'CONFIRMED',
-        },
-      });
 
-      const totalPandingBookings = await tx.booking.count({
-        where: {
-          event: {
-            managerId,
-          },
-          status: 'PENDING',
-        },
-      });
+          include: {
+            bookings: {
+              where: {
+                status: 'Confirmed',
+              },
 
-      const sales = await tx.booking.aggregate({
-        where: {
-          event: {
-            managerId,
-          },
-          status: 'CONFIRMED',
-        },
-        _sum: {
-          total: true,
-        },
-        _avg: {
-          total: true,
-        },
-      });
-
-      const managerRevenue = await tx.revenueSplit.aggregate({
-        where: {
-          splitType: 'MANAGER',
-          booking: {
-            event: {
-              managerId,
+              include: {
+                splits: true,
+              },
             },
-            status: 'CONFIRMED',
           },
-        },
-        _sum: {
-          amount: true,
-        },
-      });
 
-      const adminRevenue = await tx.revenueSplit.aggregate({
-        where: {
-          splitType: 'ADMIN',
-          booking: {
-            event: {
-              managerId,
-            },
-            status: 'CONFIRMED',
+          orderBy: {
+            createdAt: 'desc',
           },
-        },
-        _sum: {
-          amount: true,
-        },
+        }),
+      ]);
+
+      const totalSeats = seatStats._sum.totalSeats ?? 0;
+
+      const bookedSeats = seatStats._sum.bookedSeats ?? 0;
+
+      const eventWiseReport = events.map((event) => {
+        const totalSales = event.bookings.reduce(
+          (sum: number, booking) => sum + Number(booking.total),
+          0,
+        );
+
+        const allSplits = event.bookings.flatMap((booking) => booking.splits);
+
+        const managerEarnings = allSplits
+          .filter((split) => split.splitType === 'Manager')
+          .reduce((sum: number, split) => sum + Number(split.amount), 0);
+
+        const adminEarnings = allSplits
+          .filter((split) => split.splitType === 'Admin')
+          .reduce((sum: number, split) => sum + Number(split.amount), 0);
+
+        const remainingSeats = event.totalSeats - event.bookedSeats;
+
+        const estimatedLoss =
+          event.status === 'Completed'
+            ? remainingSeats * Number(event.price)
+            : 0;
+
+        const occupancyRate =
+          event.totalSeats > 0
+            ? ((event.bookedSeats / event.totalSeats) * 100).toFixed(2)
+            : '0';
+
+        return {
+          eventId: event.id,
+          title: event.title,
+          performer: event.performer,
+          venue: event.venue,
+          city: event.city,
+          country: event.country,
+          eventDate: event.date,
+          eventStatus: event.status,
+          price: event.price,
+          totalSeats: event.totalSeats,
+          bookedSeats: event.bookedSeats,
+          remainingSeats,
+          occupancyRate: `${occupancyRate}%`,
+          totalConfirmedBookings: event.bookings.length,
+          totalSales,
+          managerEarnings,
+          adminEarnings,
+          estimatedLoss,
+          createdAt: event.createdAt,
+        };
       });
 
-      const seatStats = await tx.event.aggregate({
-        where: {
-          managerId,
-        },
-        _sum: {
-          totalSeats: true,
-          bookedSeats: true,
-        },
-      });
+      const totalEstimatedLoss = eventWiseReport.reduce(
+        (sum, event) => sum + event.estimatedLoss,
+        0,
+      );
 
-      const totalSeats = seatStats._sum.totalSeats || 0;
-      const bookedSeats = seatStats._sum.bookedSeats || 0;
+      const recentEvents = eventWiseReport.slice(0, 5);
 
       return {
         status: 'success',
-        data: {
+
+        dashboard: {
           totalEvents,
           activeEvents,
           suspendedEvents,
-
+          completedEvents,
           bookings: {
             totalConfirmedBookings,
-            totalPandingBookings,
+            totalPendingBookings,
           },
-
-          totalSales: sales._sum.total || 0,
-          managerEarnings: managerRevenue._sum.amount || 0,
-          adminEarnings: adminRevenue._sum.amount || 0,
-
+          totalSales: sales._sum.total ?? 0,
+          averageSale: sales._avg.total ?? 0,
+          managerEarnings: managerRevenue._sum.amount ?? 0,
+          adminEarnings: adminRevenue._sum.amount ?? 0,
           totalSeats,
           bookedSeats,
           remainingSeats: totalSeats - bookedSeats,
+          totalEstimatedLoss,
+          recentEvents,
+          eventWiseReport,
         },
       };
-    });
+    } catch (error) {
+      console.log(error);
+      throw new Error('Failed to generate manager dashboard');
+    }
   }
 
   async getManagerEventWiseReport(managerId: number) {
-    return await this.prisma.$transaction(async (tx) => {
-      const events = await tx.event.findMany({
+    try {
+      const events = await this.prisma.event.findMany({
         where: {
           managerId,
         },
+
+        include: {
+          bookings: {
+            include: {
+              splits: true,
+            },
+          },
+        },
+
         orderBy: {
           createdAt: 'desc',
         },
       });
 
-      const report = [];
+      const report = events.map((event) => {
+        const confirmedBookings = event.bookings.filter(
+          (booking) => booking.status === 'Confirmed',
+        );
 
-      for (const event of events) {
-        const totalConfirmedBookings = await tx.booking.count({
-          where: {
-            eventId: event.id,
-            status: 'CONFIRMED',
-          },
-        });
+        const pendingBookings = event.bookings.filter(
+          (booking) => booking.status === 'Pending',
+        );
 
-        const totalPandingBookings = await tx.booking.count({
-          where: {
-            eventId: event.id,
-            status: 'PENDING',
-          },
-        });
+        const totalSales = confirmedBookings.reduce(
+          (sum, booking) => sum + Number(booking.total),
+          0,
+        );
 
-        const sales = await tx.booking.aggregate({
-          where: {
-            eventId: event.id,
-            status: 'CONFIRMED',
-          },
-          _sum: {
-            total: true,
-          },
-        });
+        const allSplits = confirmedBookings.flatMap(
+          (booking) => booking.splits,
+        );
 
-        const managerRevenue = await tx.revenueSplit.aggregate({
-          where: {
-            splitType: 'MANAGER',
-            booking: {
-              eventId: event.id,
-              status: 'CONFIRMED',
-            },
-          },
-          _sum: {
-            amount: true,
-          },
-        });
+        const managerEarnings = allSplits
+          .filter((split) => split.splitType === 'Manager')
+          .reduce((sum, split) => sum + Number(split.amount), 0);
 
-        const adminRevenue = await tx.revenueSplit.aggregate({
-          where: {
-            splitType: 'ADMIN',
-            booking: {
-              eventId: event.id,
-              status: 'CONFIRMED',
-            },
-          },
-          _sum: {
-            amount: true,
-          },
-        });
+        const adminEarnings = allSplits
+          .filter((split) => split.splitType === 'Admin')
+          .reduce((sum, split) => sum + Number(split.amount), 0);
 
-        report.push({
-          id: event.id,
+        const remainingSeats = event.totalSeats - event.bookedSeats;
+
+        const estimatedLoss =
+          event.status === 'Completed'
+            ? remainingSeats * Number(event.price)
+            : 0;
+
+        const occupancyRate =
+          event.totalSeats > 0
+            ? ((event.bookedSeats / event.totalSeats) * 100).toFixed(2)
+            : '0';
+
+        return {
+          eventId: event.id,
           title: event.title,
-          date: event.date,
+          performer: event.performer,
           venue: event.venue,
+          city: event.city,
+          country: event.country,
+          eventDate: event.date,
           eventStatus: event.status,
+          price: event.price,
           totalSeats: event.totalSeats,
           bookedSeats: event.bookedSeats,
-          remainingSeats: event.totalSeats - event.bookedSeats,
-          totalConfirmedBookings,
-          totalPandingBookings,
-          totalSales: sales._sum.total || 0,
-          managerEarnings: managerRevenue._sum.amount || 0,
-          adminEarnings: adminRevenue._sum.amount || 0,
-        });
-      }
-      return { status: 'success', report };
-    });
-  }
+          remainingSeats,
+          occupancyRate: `${occupancyRate}%`,
+          totalConfirmedBookings: confirmedBookings.length,
+          totalPendingBookings: pendingBookings.length,
+          totalSales,
+          managerEarnings,
+          adminEarnings,
+          estimatedLoss,
+          createdAt: event.createdAt,
+        };
+      });
 
-  async getUserPurchaseHistory(userId: number) {
-    const bookings = await this.prisma.booking.findMany({
-      where: {
-        userId,
-      },
-      include: {
-        event: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-
-    if (bookings.length == 0) {
-      throw new Error('No purchase history found!');
+      return {
+        status: 'success',
+        report,
+      };
+    } catch (error) {
+      throw new Error('Failed to generate manager event report');
     }
-
-    return bookings.map((booking) => ({
-      bookingId: booking.id,
-      eventTitle: booking.event.title,
-      performer: booking.event.performer,
-      venue: booking.event.venue,
-      eventDate: booking.event.date,
-      quantity: booking.quantity,
-      totalPaid: booking.total,
-      bookingStatus: booking.status,
-      bookedAt: booking.createdAt,
-    }));
   }
 }

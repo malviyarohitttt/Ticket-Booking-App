@@ -36,18 +36,6 @@ export class EventController {
   events() {
     return this.eventService.allEvents();
   }
-
-  @ApiParam({
-    name: 'id',
-    type: Number,
-    description: 'Unique identifier of the event to retrieve',
-    example: 5,
-  })
-  @Get(':id')
-  event(@Param('id', ParseIntPipe) id: number) {
-    return this.eventService.event(id);
-  }
-
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserType.Manager)
@@ -63,8 +51,25 @@ export class EventController {
   @ApiParam({
     name: 'eventId',
     type: Number,
-    description: 'Unique identifier of the event to update',
-    example: 3,
+  })
+  @Roles(UserType.Admin, UserType.Manager)
+  @Get('bookings/:eventId')
+  eventsBookings(@Param('eventId', ParseIntPipe) eventId: number) {
+    return this.eventService.bookings(eventId);
+  }
+
+  @ApiParam({
+    name: 'id',
+    type: Number,
+  })
+  @Get(':id')
+  event(@Param('id', ParseIntPipe) id: number) {
+    return this.eventService.event(id);
+  }
+
+  @ApiParam({
+    name: 'eventId',
+    type: Number,
   })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -82,15 +87,10 @@ export class EventController {
   @ApiParam({
     name: 'id',
     type: Number,
-    description: 'Unique identifier of the event whose status will be changed',
-    example: 10,
   })
   @ApiParam({
     name: 'status',
     enum: EventStatus,
-    description:
-      'New status value to be assigned to the event. Must be one of the predefined EventStatus enum values.',
-    example: EventStatus.Active,
   })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)

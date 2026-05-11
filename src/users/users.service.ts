@@ -651,4 +651,75 @@ export class UsersService {
     }
     return events;
   }
+
+  async getMyBookings(userId: number) {
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        userId,
+      },
+      include: {
+        event: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (bookings.length == 0) {
+      throw new Error('No bookings found!');
+    }
+
+    return {
+      status: 'success',
+
+      bookings: bookings.map((booking) => ({
+        bookingId: booking.id,
+        bookingStatus: booking.status,
+        quantity: booking.quantity,
+        totalAmountPaid: booking.total,
+        bookedAt: booking.createdAt,
+        event: {
+          id: booking.event.id,
+          title: booking.event.title,
+          performer: booking.event.performer,
+          venue: booking.event.venue,
+          city: booking.event.city,
+          country: booking.event.country,
+          eventDate: booking.event.date,
+          price: booking.event.price,
+          eventStatus: booking.event.status,
+        },
+      })),
+    };
+  }
+
+  async getUserPurchaseHistory(userId: number) {
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        userId,
+      },
+      include: {
+        event: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (bookings.length == 0) {
+      throw new Error('No purchase history found!');
+    }
+
+    return bookings.map((booking) => ({
+      bookingId: booking.id,
+      eventTitle: booking.event.title,
+      performer: booking.event.performer,
+      venue: booking.event.venue,
+      eventDate: booking.event.date,
+      quantity: booking.quantity,
+      totalPaid: booking.total,
+      bookingStatus: booking.status,
+      bookedAt: booking.createdAt,
+    }));
+  }
 }

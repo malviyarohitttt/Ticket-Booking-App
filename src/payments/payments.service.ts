@@ -1,135 +1,56 @@
-import { PrismaService } from 'src/prisma';
-import {
-  Prisma,
-  TxnPurpose,
-  TxnType,
-  SplitType,
-} from 'src/generated/prisma/client';
+import { Prisma, SplitType } from 'src/generated/prisma/client';
 import { Injectable } from '@nestjs/common';
-
+import { WalletService } from 'src/wallet/wallet.service';
 @Injectable()
 export class PaymentsService {
-  ADMIN_PERCENT = 18.8;
-  MANAGER_PERCENT = 81.2;
-
-  constructor(private readonly prisma: PrismaService) {}
-
+  constructor(private readonly walletService: WalletService) {}
   async processBookingPayment(
     tx: Prisma.TransactionClient,
     payload: {
       bookingId: number;
-      customerId: number;
+      userId: number;
       managerId: number;
+      eventId: number;
+      quantity: number;
       total: number;
     },
   ) {
-    const { bookingId, customerId, managerId, total } = payload;
+    const { bookingId, eventId, quantity, userId, managerId, total } = payload;
 
-    const customerWallet = await tx.wallet.findUnique({
-      where: { userId: customerId },
-    });
+    const event = await tx.event.findUnique({ where: { id: eventId } });
 
-    if (!customerWallet || customerWallet.balance < total) {
-      throw new Error('Insufficient wallet balance');
+    if (!event) {
+      throw new Error('Event not found');
     }
 
-    const adminWallet = await tx.adminWallet.findUnique({
-      where: { adminId: 1 },
+    const seatUpdate = await tx.event.updateMany({
+      where: { id: eventId, bookedSeats: { lte: event.totalSeats - quantity } },
+      data: { bookedSeats: { increment: quantity } },
     });
-
-    if (!adminWallet) {
-      throw new Error('Admin wallet not configured');
+    if (seatUpdate.count === 0) {
+      throw new Error('Not enough seats');
     }
 
-    const managerWallet = await tx.wallet.findUnique({
-      where: { userId: managerId },
-    });
+    const { adminShare, managerShare } =
+      await this.walletService.processBookingTransfer(tx, {
+        bookingId,
+        userId,
+        managerId,
+        total,
+      });
 
-    if (!managerWallet) {
-      throw new Error('Manager wallet not configured');
-    }
-
-    const adminShare = Number(((total * this.ADMIN_PERCENT) / 100).toFixed(2));
-    const managerShare = Number(
-      ((total * this.MANAGER_PERCENT) / 100).toFixed(2),
-    );
-
-    await tx.wallet.update({
-      where: { userId: customerId },
-      data: {
-        balance: { decrement: total },
-      },
-    });
-
-    await tx.adminWallet.update({
-      where: { adminId: 1 },
-      data: {
-        balance: { increment: adminShare },
-      },
-    });
-
-    await tx.wallet.update({
-      where: { userId: managerId },
-      data: {
-        balance: { increment: managerShare },
-      },
-    });
-
-    await tx.transaction.create({
-      data: {
-        userId: customerId,
-        walletId: customerWallet.id,
-        amount: total,
-        type: TxnType.DEBIT,
-        purpose: TxnPurpose.BOOKING_PAYMENT,
-        referenceId: bookingId,
-        note: 'Ticket booking payment',
-      },
-    });
-
-    await tx.adminTransactions.create({
-      data: {
-        adminId: 1,
-        adminWalletId: adminWallet.id,
-        amount: adminShare,
-        type: TxnType.CREDIT,
-        purpose: TxnPurpose.PLATFORM_COMMISSION,
-        referenceId: bookingId,
-        note: 'Platform commission earned',
-      },
-    });
-
-    await tx.transaction.create({
-      data: {
-        userId: managerId,
-        walletId: managerWallet.id,
-        amount: managerShare,
-        type: TxnType.CREDIT,
-        purpose: TxnPurpose.EVENT_MANAGER_PAYOUT,
-        referenceId: bookingId,
-        note: 'Event manager payout',
-      },
+    await tx.booking.update({
+      where: { id: bookingId },
+      data: { status: 'Confirmed' },
     });
 
     await tx.revenueSplit.createMany({
       data: [
-        {
-          bookingId,
-          amount: adminShare,
-          splitType: SplitType.ADMIN,
-        },
-        {
-          bookingId,
-          amount: managerShare,
-          splitType: SplitType.MANAGER,
-        },
+        { bookingId, amount: adminShare, splitType: SplitType.Admin },
+        { bookingId, amount: managerShare, splitType: SplitType.Manager },
       ],
     });
 
-    return {
-      total,
-      adminShare,
-      managerShare,
-    };
+    return { total, adminShare, managerShare };
   }
 }

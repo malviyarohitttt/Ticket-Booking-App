@@ -1,50 +1,48 @@
-import {
-  Controller,
-  Param,
-  ParseIntPipe,
-  Post,
-  Query,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
-import { BookingsService } from './bookings.service';
-import { ApiBearerAuth, ApiParam, ApiTags } from '@nestjs/swagger';
-import {
-  AuthenticatedRequest,
-  JwtAuthGuard,
-  Roles,
-  RolesGuard,
-  UserType,
-} from '@Common';
-import { CreateBookingDto } from './dto/create-booking.dto';
+import { Body, Controller, Param, ParseIntPipe, Post } from '@nestjs/common';
 
-@ApiTags('Booking Management')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+import { BookingsService } from './bookings.service';
+
 @Controller('bookings')
 export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) {}
 
-  @Roles(UserType.User)
-  @Post('book/hold')
-  holdTicket(
-    @Req() req: AuthenticatedRequest,
-    @Query() query: CreateBookingDto,
+  @Post('hold')
+  async holdSeats(
+    @Body()
+    body: {
+      userId: number;
+      eventId: number;
+      quantity: number;
+    },
   ) {
-    const ctx = req.user;
-    return this.bookingsService.holdSeats(ctx, query);
+    return this.bookingsService.holdSeats(
+      body.userId,
+      body.eventId,
+      body.quantity,
+    );
   }
 
-  @ApiParam({
-    name: 'holdId',
-  })
-  @Roles(UserType.User)
-  @Post('book/confirm/:holdId')
-  bookTicket(
-    @Req() req: AuthenticatedRequest,
-    @Param('holdId', ParseIntPipe) holdId: number,
+  @Post('payment/:holdId')
+  async processPayment(
+    @Param('holdId', ParseIntPipe)
+    holdId: number,
+    @Body()
+    body: {
+      userId: number;
+    },
   ) {
-    const ctx = req.user;
-    return this.bookingsService.book(ctx, holdId);
+    return this.bookingsService.processPayment(body.userId, holdId);
+  }
+
+  @Post('confirm/:holdId')
+  async confirmBooking(
+    @Param('holdId', ParseIntPipe)
+    holdId: number,
+    @Body()
+    body: {
+      userId: number;
+    },
+  ) {
+    return this.bookingsService.confirmBooking(body.userId, holdId);
   }
 }

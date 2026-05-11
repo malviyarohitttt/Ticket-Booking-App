@@ -59,6 +59,21 @@ export class UsersController extends BaseController {
     const ctx = this.getContext(req);
     return await this.usersService.myEvents(ctx.user);
   }
+  @Get('purchase-history')
+  @Roles(UserType.User)
+  @UseGuards(RolesGuard)
+  getUserPurchaseHistory(@Req() req: AuthenticatedRequest) {
+    const ctx = this.getContext(req);
+    return this.usersService.getUserPurchaseHistory(ctx.user.id);
+  }
+
+  @Get('my-bookings')
+  @Roles(UserType.User)
+  @UseGuards(RolesGuard)
+  getMyBookings(@Req() req: AuthenticatedRequest) {
+    const ctx = this.getContext(req);
+    return this.usersService.getMyBookings(ctx.user.id);
+  }
 
   @Get('me')
   @Roles(UserType.User, UserType.Manager)

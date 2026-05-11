@@ -22,14 +22,14 @@ export class ReportingController {
   @Get('admin/dashboard')
   @Roles(UserType.Admin)
   getAdminDashboardData() {
-    return this.reportingService.getAdminDashboardData();
+    return this.reportingService.getAdminDashboard();
   }
 
   @Get('manager/dashboard')
   @Roles(UserType.Manager)
   getManagerDashboardData(@Req() req: AuthenticatedRequest) {
     const ctx = this.getCtx(req);
-    return this.reportingService.getManagerDashboardData(ctx.id);
+    return this.reportingService.getManagerDashboard(ctx.id);
   }
 
   @Get('manager/event-wise-report')
@@ -37,12 +37,5 @@ export class ReportingController {
   getManagerEventWiseReport(@Req() req: AuthenticatedRequest) {
     const ctx = this.getCtx(req);
     return this.reportingService.getManagerEventWiseReport(ctx.id);
-  }
-
-  @Get('user/purchase-history')
-  @Roles(UserType.User, UserType.Manager)
-  getUserPurchaseHistory(@Req() req: AuthenticatedRequest) {
-    const ctx = this.getCtx(req);
-    return this.reportingService.getUserPurchaseHistory(ctx.id);
   }
 }

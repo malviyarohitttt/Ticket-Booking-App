@@ -1,5 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -34,39 +32,47 @@ enum UserRoles {
 enum EventStatus {
   Active    @map("active")
   Suspended @map("suspended")
+  Completed @map("completed")
 
   @@map("event_status")
 }
 
 enum BookingStatus {
-  PENDING   @map("pending")
-  CONFIRMED @map("confirmed")
-  CANCELLED @map("cancelled")
-  EXPIRED   @map("expired")
+  Pending   @map("pending")
+  Confirmed @map("confirmed")
+  Cancelled @map("cancelled")
+  Expired   @map("expired")
 
   @@map("booking_status")
 }
 
+enum SeatHoldStatus {
+  Hold       @map("hold")
+  Processing @map("processing")
+  Completed  @map("completed")
+  Expired    @map("expired")
+}
+
 enum TxnType {
-  CREDIT @map("credit")
-  DEBIT  @map("debit")
+  Credit @map("credit")
+  Debit  @map("debit")
 
   @@map("txn_type")
 }
 
 enum TxnPurpose {
-  BOOKING_PAYMENT      @map("booking_payment")
-  PLATFORM_COMMISSION  @map("platform_commission")
-  EVENT_MANAGER_PAYOUT @map("event_manager_payout")
-  WALLET_TOPUP         @map("wallet_topup")
-  REFUND               @map("refund")
+  BookingPayment     @map("booking_payment")
+  PlatformCommission @map("platform_commission")
+  EventManagerPayout @map("event_manager_payout")
+  WalletTopup        @map("wallet_topup")
+  Refund             @map("refund")
 
   @@map("txn_purpose")
 }
 
 enum SplitType {
-  ADMIN   @map("admin")
-  MANAGER @map("manager")
+  Admin   @map("admin")
+  Manager @map("manager")
 
   @@map("split_type")
 }
@@ -88,23 +94,25 @@ enum SettingType {
 
 enum SettingContext {
   User   @map("user")
-  System @map("System")
+  System @map("system")
 
   @@map("setting_context")
 }
 
 model Admin {
-  id           Int                 @id @default(autoincrement())
+  id           Int         @id @default(autoincrement())
   firstname    String
   lastname     String
-  email        String              @unique
-  profileImage String?             @map("profile_image")
-  status       AdminStatus         @default(Active)
+  email        String      @unique
+  profileImage String?     @map("profile_image")
+  status       AdminStatus @default(Active)
+
   meta         AdminMeta?
   adminWallets AdminWallet[]
   txns         AdminTransactions[]
-  createdAt    DateTime            @default(now()) @map("created_at")
-  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("admin")
 }
@@ -112,63 +120,71 @@ model Admin {
 model AdminMeta {
   passwordSalt String? @map("password_salt")
   passwordHash String? @map("password_hash")
-  admin        Admin   @relation(fields: [adminId], references: [id])
-  adminId      Int     @unique @map("admin_id")
+
+  admin   Admin @relation(fields: [adminId], references: [id])
+  adminId Int   @unique @map("admin_id")
 
   @@map("admin_meta")
 }
 
 model AdminWallet {
-  id        Int                 @id @default(autoincrement())
-  adminId   Int                 @unique @map("admin_id")
-  balance   Float               @default(0)
-  txns      AdminTransactions[]
-  admin     Admin               @relation(fields: [adminId], references: [id])
-  createdAt DateTime            @default(now()) @map("created_at")
-  updatedAt DateTime            @updatedAt @map("updated_at")
+  id      Int   @id @default(autoincrement())
+  adminId Int   @unique @map("admin_id")
+  balance Float @default(0)
+
+  txns  AdminTransactions[]
+  admin Admin               @relation(fields: [adminId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("admin_wallet")
 }
 
 model AdminTransactions {
-  id            Int          @id @default(autoincrement())
-  amount        Float
-  type          TxnType
-  purpose       TxnPurpose
-  referenceId   Int?         @map("reference_id")
-  note          String?
-  adminId       Int          @map("admin_id")
-  admin         Admin        @relation(fields: [adminId], references: [id])
+  id          Int        @id @default(autoincrement())
+  amount      Float
+  type        TxnType
+  purpose     TxnPurpose
+  referenceId Int?       @map("reference_id")
+  note        String?
+
+  adminId Int   @map("admin_id")
+  admin   Admin @relation(fields: [adminId], references: [id])
+
   adminWallet   AdminWallet? @relation(fields: [adminWalletId], references: [id])
   adminWalletId Int?
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("admin_transactions")
 }
 
 model User {
-  id           Int           @id @default(autoincrement())
+  id           Int     @id @default(autoincrement())
   firstname    String
   lastname     String
-  username     String?       @unique
-  email        String        @unique
-  dialCode     String?       @map("dial_code")
-  mobile       String?       @unique
-  profileImage String?       @map("profile_image")
-  isVerified   Boolean       @default(false) @map("is_verified")
+  username     String? @unique
+  email        String  @unique
+  dialCode     String? @map("dial_code")
+  mobile       String? @unique
+  profileImage String? @map("profile_image")
+  isVerified   Boolean @default(false) @map("is_verified")
   country      String?
-  role         UserRoles     @default(User)
-  status       UserStatus    @default(Active)
-  meta         UserMeta?
-  settings     UserSetting[]
-  events       Event[]
-  bookings     Booking[]
-  wallet       Wallet?
-  transactions Transaction[]
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
-  seatHolds    SeatHold[]
+
+  role   UserRoles  @default(User)
+  status UserStatus @default(Active)
+
+  meta      UserMeta?
+  settings  UserSetting[]
+  events    Event[]
+  bookings  Booking[]
+  wallet    Wallet?
+  seatHolds SeatHold[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("user")
 }
@@ -177,20 +193,23 @@ model UserMeta {
   googleId     String? @unique @map("google_id")
   passwordSalt String? @map("password_salt")
   passwordHash String? @map("password_hash")
-  user         User    @relation(fields: [userId], references: [id])
-  userId       Int     @unique @map("user_id")
+
+  user   User @relation(fields: [userId], references: [id])
+  userId Int  @unique @map("user_id")
 
   @@map("user_meta")
 }
 
 model Wallet {
-  id        Int           @id @default(autoincrement())
-  userId    Int           @unique @map("user_id")
-  balance   Float         @default(1000)
-  user      User          @relation(fields: [userId], references: [id])
-  txns      Transaction[]
-  createdAt DateTime      @default(now()) @map("created_at")
-  updatedAt DateTime      @updatedAt @map("updated_at")
+  id      Int   @id @default(autoincrement())
+  userId  Int   @unique @map("user_id")
+  balance Float @default(1000)
+
+  user User          @relation(fields: [userId], references: [id])
+  txns Transaction[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("wallet")
 }
@@ -203,53 +222,64 @@ model Transaction {
   purpose     TxnPurpose
   referenceId Int?       @map("reference_id")
   note        String?
-  user        User       @relation(fields: [userId], references: [id])
-  wallet      Wallet?    @relation(fields: [walletId], references: [id])
-  walletId    Int?
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  wallet   Wallet? @relation(fields: [walletId], references: [id])
+  walletId Int?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([userId])
   @@map("transaction")
 }
 
 model Event {
-  id          Int         @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   title       String
   description String?
   performer   String
-  venue       String?
-  city        String?
+  venue       String
+  city        String
   country     String
   date        DateTime
   price       Float
-  ageLimit    Int         @map("age_limit")
-  totalSeats  Int         @map("total_seats")
-  bookedSeats Int         @default(0) @map("booked_seats")
-  status      EventStatus @default(Active)
-  managerId   Int         @map("manager_id")
-  manager     User        @relation(fields: [managerId], references: [id])
-  bookings    Booking[]
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
-  seatHolds   SeatHold[]
+
+  ageLimit    Int @map("age_limit")
+  totalSeats  Int @map("total_seats")
+  bookedSeats Int @default(0) @map("booked_seats")
+
+  status EventStatus @default(Active)
+
+  managerId Int  @map("manager_id")
+  manager   User @relation(fields: [managerId], references: [id])
+
+  bookings  Booking[]
+  seatHolds SeatHold[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([managerId])
   @@map("event")
 }
 
 model Booking {
-  id        Int            @id @default(autoincrement())
-  userId    Int            @map("user_id")
-  eventId   Int            @map("event_id")
-  quantity  Int
-  total     Float
-  status    BookingStatus  @default(PENDING)
-  user      User           @relation(fields: [userId], references: [id])
-  event     Event          @relation(fields: [eventId], references: [id])
-  splits    RevenueSplit[]
-  createdAt DateTime       @default(now()) @map("created_at")
-  updatedAt DateTime       @updatedAt @map("updated_at")
+  id      Int @id @default(autoincrement())
+  userId  Int @map("user_id")
+  eventId Int @map("event_id")
+
+  quantity Int
+  total    Float
+
+  status BookingStatus @default(Pending)
+
+  user  User  @relation(fields: [userId], references: [id])
+  event Event @relation(fields: [eventId], references: [id])
+
+  splits RevenueSplit[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([eventId])
@@ -257,11 +287,16 @@ model Booking {
 }
 
 model SeatHold {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  eventId   Int
-  quantity  Int
-  expiresAt DateTime
+  id       Int @id @default(autoincrement())
+  userId   Int
+  eventId  Int
+  quantity Int
+
+  status SeatHoldStatus @default(Hold)
+
+  paymentStartedAt DateTime?
+  expiresAt        DateTime
+
   createdAt DateTime @default(now())
 
   user  User  @relation(fields: [userId], references: [id])
@@ -269,55 +304,69 @@ model SeatHold {
 }
 
 model RevenueSplit {
-  id        Int       @id @default(autoincrement())
-  bookingId Int       @map("booking_id")
+  id        Int @id @default(autoincrement())
+  bookingId Int @map("booking_id")
+
   amount    Float
   splitType SplitType @map("split_type")
-  booking   Booking   @relation(fields: [bookingId], references: [id])
-  createdAt DateTime  @default(now()) @map("created_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@index([bookingId])
   @@map("revenue_split")
 }
 
 model Otp {
-  code             String
-  attempt          Int          @default(1) @db.SmallInt
-  lastSentAt       DateTime     @default(now()) @map("last_sent_at")
-  retries          Int          @default(0) @db.SmallInt
-  transport        OtpTransport
-  target           String
-  lastCodeVerified Boolean      @default(false) @map("last_code_verified")
-  blocked          Boolean      @default(false)
+  code String
+
+  attempt    Int      @default(1) @db.SmallInt
+  lastSentAt DateTime @default(now()) @map("last_sent_at")
+  retries    Int      @default(0) @db.SmallInt
+
+  transport OtpTransport
+  target    String
+
+  lastCodeVerified Boolean @default(false) @map("last_code_verified")
+  blocked          Boolean @default(false)
 
   @@unique([transport, target])
   @@map("otp")
 }
 
 model Setting {
-  id               Int             @id @default(autoincrement())
-  mappedTo         String          @map("mapped_to")
-  text             String          @default("")
-  description      String          @default("")
-  type             SettingType
-  context          SettingContext
-  default          Json
-  isDefinedOptions Boolean         @map("is_defined_options")
-  subSettings      Setting[]       @relation("SubSettings")
-  dependsOn        Setting?        @relation("SubSettings", fields: [parentId], references: [id])
-  parentId         Int?            @map("parent_id")
-  options          SettingOption[]
-  userSettings     UserSetting[]
-  systemSettings   SystemSetting[]
+  id Int @id @default(autoincrement())
+
+  mappedTo    String @map("mapped_to")
+  text        String @default("")
+  description String @default("")
+
+  type    SettingType
+  context SettingContext
+
+  default Json
+
+  isDefinedOptions Boolean @map("is_defined_options")
+
+  subSettings Setting[] @relation("SubSettings")
+  dependsOn   Setting?  @relation("SubSettings", fields: [parentId], references: [id])
+
+  parentId Int? @map("parent_id")
+
+  options        SettingOption[]
+  userSettings   UserSetting[]
+  systemSettings SystemSetting[]
 
   @@unique([context, mappedTo])
   @@map("setting")
 }
 
 model SettingOption {
-  id        Int     @id @default(autoincrement())
-  text      String  @default("")
-  value     String
+  id    Int    @id @default(autoincrement())
+  text  String @default("")
+  value String
+
   setting   Setting @relation(fields: [settingId], references: [id])
   settingId Int     @map("setting_id")
 
@@ -327,8 +376,10 @@ model SettingOption {
 
 model UserSetting {
   selection Json
-  user      User    @relation(fields: [userId], references: [id])
-  userId    Int     @map("user_id")
+
+  user   User @relation(fields: [userId], references: [id])
+  userId Int  @map("user_id")
+
   setting   Setting @relation(fields: [settingId], references: [id])
   settingId Int     @map("setting_id")
 
@@ -338,6 +389,7 @@ model UserSetting {
 
 model SystemSetting {
   selection Json
+
   setting   Setting @relation(fields: [settingId], references: [id])
   settingId Int     @map("setting_id")
 

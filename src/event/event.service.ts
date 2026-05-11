@@ -41,7 +41,7 @@ export class EventService {
             venue: data.venue,
             country: data.country,
             date: data.date,
-            price: data.ticketPrice,
+            price: data.price,
             ageLimit: data.ageLimit,
             totalSeats: data.totalSeats,
 
@@ -79,7 +79,7 @@ export class EventService {
           venue: data?.venue,
           country: data?.country,
           date: data?.date,
-          price: data?.ticketPrice,
+          price: data?.price,
           ageLimit: data?.ageLimit,
           totalSeats: data?.totalSeats,
         },
@@ -109,6 +109,29 @@ export class EventService {
     } catch (error) {
       throw error;
     }
+  }
+
+  async bookings(eventId: number) {
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        eventId,
+      },
+      include: {
+        user: {
+          select: {
+            firstname: true,
+            lastname: true,
+            email: true,
+            mobile: true,
+          },
+        },
+      },
+    });
+
+    if (!(bookings.length > 0)) {
+      throw new Error('No bookings yet for this event!');
+    }
+    return { status: 'success', bookings };
   }
 }
 

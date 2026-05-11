@@ -80,5 +80,5 @@ export class UpdateEventRequestDto {
   @Type(() => Number)
   @IsNumber()
   @Min(1)
-  readonly ticketPrice?: number;
+  readonly price?: number;
 }
