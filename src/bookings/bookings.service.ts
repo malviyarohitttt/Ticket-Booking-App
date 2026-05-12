@@ -1,18 +1,32 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from 'src/prisma';
 
-import { BookingStatus, Prisma } from 'src/generated/prisma/client';
+import {
+  BookingStatus,
+  EventStatus,
+  Prisma,
+  SeatHoldStatus,
+} from 'src/generated/prisma/client';
+
+import { PaymentsService } from 'src/payments/payments.service';
 
 @Injectable()
 export class BookingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly MAX_EVENT_TICKETS_PER_DAY = 5;
+  private readonly BOOKING_PAYMENT_TIME = 10 * 60 * 1000;
+  private readonly HOLD_EXPIRE_TIME = 1 * 60 * 1000;
 
-  async holdSeats(userId: number, eventId: number, quantity: number) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
+
+  async holdSeats(userId: number, eventId: number, ticketQuantity: number) {
     return this.prisma.$transaction(
       async (tx) => {
         const eventRows = await tx.$queryRaw<any[]>`
-          SELECT * FROM "Event"
+          SELECT * FROM "event"
           WHERE id = ${eventId}
           FOR UPDATE
         `;
@@ -20,26 +34,95 @@ export class BookingsService {
         const event = eventRows[0];
 
         if (!event) {
-          throw new BadRequestException('Event not found');
+          throw new Error('Event not found');
+        }
+
+        if (event.status !== EventStatus.Active.toLowerCase()) {
+          throw new Error('Event is inactive');
         }
 
         await tx.seatHold.updateMany({
           where: {
-            status: 'Hold',
+            status: SeatHoldStatus.Hold,
             expiresAt: {
               lt: new Date(),
             },
           },
           data: {
-            status: 'Expired',
+            status: SeatHoldStatus.Expired,
           },
         });
+
+        const existingHold = await tx.seatHold.findFirst({
+          where: {
+            userId,
+            eventId,
+            status: {
+              in: [SeatHoldStatus.Hold, SeatHoldStatus.Processing],
+            },
+          },
+        });
+
+        if (existingHold) {
+          throw new Error(`Already holding seats with id ${existingHold.id}`);
+        }
+
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const endOfDay = new Date();
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const todayBooked = await tx.booking.aggregate({
+          where: {
+            userId,
+            eventId,
+            status: BookingStatus.Confirmed,
+            createdAt: {
+              gte: startOfDay,
+              lte: endOfDay,
+            },
+          },
+          _sum: {
+            quantity: true,
+          },
+        });
+
+        const todayHold = await tx.seatHold.aggregate({
+          where: {
+            userId,
+            eventId,
+            expiresAt: {
+              gt: new Date(),
+            },
+            createdAt: {
+              gte: startOfDay,
+              lte: endOfDay,
+            },
+          },
+          _sum: {
+            quantity: true,
+          },
+        });
+
+        const bookedQty = todayBooked._sum.quantity || 0;
+        const holdQty = todayHold._sum.quantity || 0;
+        const totalTodayTotalSeatsBooked = bookedQty + holdQty;
+
+        if (
+          totalTodayTotalSeatsBooked + ticketQuantity >
+          this.MAX_EVENT_TICKETS_PER_DAY
+        ) {
+          throw new Error(
+            `Maximum ${this.MAX_EVENT_TICKETS_PER_DAY} tickets allowed per event per day`,
+          );
+        }
 
         const activeHolds = await tx.seatHold.aggregate({
           where: {
             eventId,
             status: {
-              in: ['Hold', 'Processing'],
+              in: [SeatHoldStatus.Hold, SeatHoldStatus.Processing],
             },
             OR: [
               {
@@ -59,25 +142,26 @@ export class BookingsService {
           },
         });
 
-        const holdSeats = activeHolds._sum.quantity || 0;
+        const holdSeats = activeHolds._sum?.quantity ?? 0;
 
         const availableSeats = event.totalSeats - event.bookedSeats - holdSeats;
 
-        if (availableSeats < quantity) {
-          throw new BadRequestException('Seats unavailable');
+        if (availableSeats < ticketQuantity) {
+          throw new Error('Seats unavailable');
         }
 
         const hold = await tx.seatHold.create({
           data: {
             userId,
             eventId,
-            quantity,
-            status: 'Hold',
-            expiresAt: new Date(Date.now() + 60 * 1000),
+            quantity: ticketQuantity,
+            status: SeatHoldStatus.Hold,
+            expiresAt: new Date(Date.now() + this.HOLD_EXPIRE_TIME),
           },
         });
 
         return {
+          status: 'success',
           holdId: hold.id,
           expiresAt: hold.expiresAt,
         };
@@ -92,7 +176,7 @@ export class BookingsService {
     return this.prisma.$transaction(
       async (tx) => {
         const holdRows = await tx.$queryRaw<any[]>`
-          SELECT * FROM "SeatHold"
+          SELECT * FROM "seat_hold"
           WHERE id = ${holdId}
           FOR UPDATE
         `;
@@ -100,28 +184,32 @@ export class BookingsService {
         const hold = holdRows[0];
 
         if (!hold) {
-          throw new BadRequestException('Hold not found');
+          throw new Error('Hold not found');
         }
 
         if (hold.userId !== userId) {
-          throw new BadRequestException('Unauthorized');
+          throw new Error('Unauthorized');
         }
 
-        if (hold.status === 'Hold' && hold.expiresAt < new Date()) {
+        if (hold.status === SeatHoldStatus.Completed.toLowerCase()) {
+          throw new Error('Booking already completed');
+        }
+
+        if (hold.status === SeatHoldStatus.Expired.toLowerCase()) {
+          throw new Error('Hold expired');
+        }
+
+        if (hold.expiresAt < new Date()) {
           await tx.seatHold.update({
             where: {
               id: hold.id,
             },
             data: {
-              status: 'Expired',
+              status: SeatHoldStatus.Expired,
             },
           });
 
-          throw new BadRequestException('Hold expired');
-        }
-
-        if (hold.status === 'Processing') {
-          throw new BadRequestException('Payment already processing');
+          throw new Error('Hold expired');
         }
 
         const event = await tx.event.findUnique({
@@ -131,10 +219,23 @@ export class BookingsService {
         });
 
         if (!event) {
-          throw new BadRequestException('Event not found');
+          throw new Error('Event not found');
         }
 
         const total = hold.quantity * event.price;
+
+        await tx.seatHold.update({
+          where: {
+            id: hold.id,
+          },
+          data: {
+            status: SeatHoldStatus.Processing,
+            paymentStartedAt: new Date(),
+            processingExpiresAt: new Date(
+              Date.now() + this.BOOKING_PAYMENT_TIME,
+            ),
+          },
+        });
 
         const booking = await tx.booking.create({
           data: {
@@ -146,142 +247,32 @@ export class BookingsService {
           },
         });
 
-        await tx.seatHold.update({
-          where: {
-            id: hold.id,
-          },
-          data: {
-            status: 'Processing',
-            paymentStartedAt: new Date(),
-            processingExpiresAt: new Date(Date.now() + 2 * 60 * 1000),
+        const settlement = await this.paymentsService.processBookingPayment(
+          tx,
+          {
             bookingId: booking.id,
-          },
-        });
-
-        return {
-          bookingId: booking.id,
-          total,
-        };
-      },
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      },
-    );
-  }
-
-  async confirmBooking(userId: number, holdId: number) {
-    return this.prisma.$transaction(
-      async (tx) => {
-        const holdRows = await tx.$queryRaw<any[]>`
-          SELECT * FROM "SeatHold"
-          WHERE id = ${holdId}
-          FOR UPDATE
-        `;
-
-        const hold = holdRows[0];
-
-        if (!hold) {
-          throw new BadRequestException('Hold not found');
-        }
-
-        if (hold.userId !== userId) {
-          throw new BadRequestException('Unauthorized');
-        }
-
-        if (hold.status !== 'Processing') {
-          throw new BadRequestException('Hold not in processing state');
-        }
-
-        if (hold.processingExpiresAt < new Date()) {
-          await tx.seatHold.update({
-            where: {
-              id: hold.id,
-            },
-            data: {
-              status: 'Expired',
-            },
-          });
-
-          throw new BadRequestException('Processing expired');
-        }
-
-        const booking = await tx.booking.findUnique({
-          where: {
-            id: hold.bookingId,
-          },
-        });
-
-        if (!booking) {
-          throw new BadRequestException('Booking not found');
-        }
-
-        const event = await tx.event.findUnique({
-          where: {
-            id: booking.eventId,
-          },
-        });
-
-        if (!event) {
-          throw new BadRequestException('Event not found');
-        }
-
-        const seatUpdate = await tx.event.updateMany({
-          where: {
-            id: booking.eventId,
-            bookedSeats: {
-              lte: event.totalSeats - booking.quantity,
-            },
-          },
-          data: {
-            bookedSeats: {
-              increment: booking.quantity,
-            },
-          },
-        });
-
-        if (seatUpdate.count === 0) {
-          throw new BadRequestException('Not enough seats');
-        }
-
-        const wallet = await tx.wallet.updateMany({
-          where: {
             userId,
-            balance: {
-              gte: booking.total,
-            },
+            managerId: event.managerId,
+            eventId: event.id,
+            quantity: hold.quantity,
+            total,
           },
-          data: {
-            balance: {
-              decrement: booking.total,
-            },
-          },
-        });
-
-        if (wallet.count === 0) {
-          throw new BadRequestException('Insufficient balance');
-        }
-
-        await tx.booking.update({
-          where: {
-            id: booking.id,
-          },
-          data: {
-            status: BookingStatus.Confirmed,
-          },
-        });
+        );
 
         await tx.seatHold.update({
           where: {
             id: hold.id,
           },
           data: {
-            status: 'Completed',
+            status: SeatHoldStatus.Completed,
+            bookingId: booking.id,
           },
         });
 
         return {
           status: 'success',
           bookingId: booking.id,
+          settlement,
         };
       },
       {

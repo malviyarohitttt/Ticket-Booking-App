@@ -48,15 +48,21 @@ export class ReportingService {
 
         this.prisma.booking.count(),
 
-        this.prisma.booking.count({
+        this.prisma.booking.aggregate({
           where: {
             status: 'Confirmed',
           },
+          _sum: {
+            quantity: true,
+          },
         }),
 
-        this.prisma.booking.count({
+        this.prisma.booking.aggregate({
           where: {
             status: 'Pending',
+          },
+          _sum: {
+            quantity: true,
           },
         }),
 
@@ -87,18 +93,15 @@ export class ReportingService {
                 email: true,
               },
             },
-
             bookings: {
               where: {
                 status: 'Confirmed',
               },
-
               include: {
                 splits: true,
               },
             },
           },
-
           orderBy: {
             createdAt: 'desc',
           },
@@ -152,7 +155,6 @@ export class ReportingService {
           bookedSeats: event.bookedSeats,
           remainingSeats,
           occupancyRate: `${occupancyRate}%`,
-          totalConfirmedBookings: event.bookings.length,
           totalSales,
           adminEarnings,
           managerEarnings,
@@ -176,8 +178,6 @@ export class ReportingService {
         0,
       );
 
-      const recentEvents = eventWiseReport.slice(0, 5);
-
       return {
         status: 'success',
         dashboard: {
@@ -187,8 +187,8 @@ export class ReportingService {
             completedEvents,
             suspendedEvents,
             totalBookings,
-            confirmedBookings,
-            pendingBookings,
+            confirmedBookings: confirmedBookings._sum.quantity ?? 0,
+            pendingBookings: pendingBookings._sum.quantity ?? 0,
             totalUsers,
             totalManagers,
             totalRevenue: totalRevenue._sum.total || 0,
@@ -196,8 +196,8 @@ export class ReportingService {
             totalManagerRevenue,
             totalEstimatedLoss,
           },
-          recentEvents,
-          eventWiseReport,
+          recentEvents: eventWiseReport.slice(0, 1),
+          eventWiseReport: eventWiseReport.slice(0, 1),
         },
       };
     } catch (error) {
@@ -262,8 +262,11 @@ export class ReportingService {
           },
         }),
 
-        this.prisma.booking.count({
+        this.prisma.booking.aggregate({
           where: confirmedBooking,
+          _sum: {
+            quantity: true,
+          },
         }),
 
         this.prisma.booking.count({
@@ -272,11 +275,9 @@ export class ReportingService {
 
         this.prisma.booking.aggregate({
           where: confirmedBooking,
-
           _sum: {
             total: true,
           },
-
           _avg: {
             total: true,
           },
@@ -298,7 +299,6 @@ export class ReportingService {
             splitType: 'Admin',
             booking: confirmedBooking,
           },
-
           _sum: {
             amount: true,
           },
@@ -317,19 +317,16 @@ export class ReportingService {
           where: {
             managerId,
           },
-
           include: {
             bookings: {
               where: {
                 status: 'Confirmed',
               },
-
               include: {
                 splits: true,
               },
             },
           },
-
           orderBy: {
             createdAt: 'desc',
           },
@@ -382,7 +379,7 @@ export class ReportingService {
           bookedSeats: event.bookedSeats,
           remainingSeats,
           occupancyRate: `${occupancyRate}%`,
-          totalConfirmedBookings: event.bookings.length,
+          totalConfirmedBookings: totalConfirmedBookings._sum.quantity ?? 0,
           totalSales,
           managerEarnings,
           adminEarnings,
@@ -434,7 +431,6 @@ export class ReportingService {
         where: {
           managerId,
         },
-
         include: {
           bookings: {
             include: {
@@ -442,7 +438,6 @@ export class ReportingService {
             },
           },
         },
-
         orderBy: {
           createdAt: 'desc',
         },

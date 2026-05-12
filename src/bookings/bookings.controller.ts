@@ -1,48 +1,60 @@
-import { Body, Controller, Param, ParseIntPipe, Post } from '@nestjs/common';
+import {
+  Controller,
+  Param,
+  ParseIntPipe,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import { BookingsService } from './bookings.service';
 
+import {
+  AuthenticatedRequest,
+  JwtAuthGuard,
+  Roles,
+  RolesGuard,
+  UserType,
+} from '@Common';
+
+import { CreateBookingDto } from './dto/create-booking.dto';
+
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserType.User)
+@ApiTags('Booking Management')
 @Controller('bookings')
 export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) {}
 
   @Post('hold')
   async holdSeats(
-    @Body()
-    body: {
-      userId: number;
-      eventId: number;
-      quantity: number;
-    },
+    @Query()
+    query: CreateBookingDto,
+
+    @Req()
+    req: AuthenticatedRequest,
   ) {
+    const ctx = req.user;
+
     return this.bookingsService.holdSeats(
-      body.userId,
-      body.eventId,
-      body.quantity,
+      ctx.id,
+      query.eventId,
+      query.ticketQuantity,
     );
   }
 
-  @Post('payment/:holdId')
+  @Post('book/:holdId')
   async processPayment(
     @Param('holdId', ParseIntPipe)
     holdId: number,
-    @Body()
-    body: {
-      userId: number;
-    },
+    @Req()
+    req: AuthenticatedRequest,
   ) {
-    return this.bookingsService.processPayment(body.userId, holdId);
-  }
-
-  @Post('confirm/:holdId')
-  async confirmBooking(
-    @Param('holdId', ParseIntPipe)
-    holdId: number,
-    @Body()
-    body: {
-      userId: number;
-    },
-  ) {
-    return this.bookingsService.confirmBooking(body.userId, holdId);
+    const ctx = req.user;
+    return this.bookingsService.processPayment(ctx.id, holdId);
   }
 }

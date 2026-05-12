@@ -52,11 +52,6 @@ export class CreateEventRequestDto {
   readonly date!: Date;
 
   @IsNotEmpty()
-  @IsDate()
-  @ApiProperty()
-  readonly time!: Date;
-
-  @IsNotEmpty()
   @IsNumber()
   @Min(1)
   @Max(1000)

@@ -4,6 +4,7 @@ import { WalletService } from 'src/wallet/wallet.service';
 @Injectable()
 export class PaymentsService {
   constructor(private readonly walletService: WalletService) {}
+
   async processBookingPayment(
     tx: Prisma.TransactionClient,
     payload: {
@@ -27,6 +28,7 @@ export class PaymentsService {
       where: { id: eventId, bookedSeats: { lte: event.totalSeats - quantity } },
       data: { bookedSeats: { increment: quantity } },
     });
+
     if (seatUpdate.count === 0) {
       throw new Error('Not enough seats');
     }
