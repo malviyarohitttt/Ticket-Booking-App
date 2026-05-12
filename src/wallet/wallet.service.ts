@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { AuthenticatedUser, UserType } from '@Common';
 import { PrismaService } from 'src/prisma';
-import { AddAmountRequestDto } from './dto/add-amount-request-dto';
 import { TxnPurpose, TxnType } from 'src/generated/prisma/enums';
 import { Prisma } from 'src/generated/prisma/client';
+import { AddAmountRequestDto } from './dto';
 
 @Injectable()
 export class WalletService {

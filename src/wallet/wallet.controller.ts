@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { WalletService } from './wallet.service';
 import { AuthenticatedRequest, JwtAuthGuard } from '@Common';
-import { AddAmountRequestDto } from './dto/add-amount-request-dto';
+import { AddAmountRequestDto } from './dto';
 
 @ApiTags('Wallet & Transactions')
 @ApiBearerAuth()

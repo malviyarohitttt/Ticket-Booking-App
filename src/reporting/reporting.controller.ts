@@ -6,7 +6,6 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ReportingService } from './reporting.service';
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
@@ -15,6 +14,7 @@ import {
   UserType,
 } from '@Common';
 import { ApiBearerAuth } from '@nestjs/swagger';
+import { ReportingService } from './reporting.service';
 
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)

@@ -11,7 +11,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiParam, ApiTags } from '@nestjs/swagger';
-import { EventService } from './event.service';
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
@@ -19,9 +18,9 @@ import {
   RolesGuard,
   UserType,
 } from '@Common';
-import { CreateEventRequestDto } from './dto/create-event-request-dto';
-import { UpdateEventRequestDto } from './dto/update-event-request-dto';
 import { EventStatus } from 'src/generated/prisma/enums';
+import { CreateEventRequestDto, UpdateEventRequestDto } from './dto';
+import { EventService } from './event.service';
 
 @ApiTags('Event Management')
 @Controller('events')

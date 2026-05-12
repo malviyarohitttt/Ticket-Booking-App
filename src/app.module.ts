@@ -13,12 +13,12 @@ import { MetricsInterceptor, MetricsModule, MetricsService } from './metrics';
 import { PrismaModule } from './prisma';
 import { AuthModule } from './auth';
 import { RedisModule } from './redis';
-import { EventModule } from './event/event.module';
-import { BookingsModule } from './bookings/bookings.module';
-import { WalletModule } from './wallet/wallet.module';
-import { PaymentsModule } from './payments/payments.module';
-import { ReportingModule } from './reporting/reporting.module';
-import { SchedulingModule } from './scheduling/scheduling.module';
+import { EventModule } from './event';
+import { BookingsModule } from './bookings';
+import { WalletModule } from './wallet';
+import { PaymentsModule } from './payments';
+import { ReportingModule } from './reporting';
+import { SchedulingModule } from './scheduling';
 
 @Module({
   imports: [

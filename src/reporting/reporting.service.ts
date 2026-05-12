@@ -302,7 +302,7 @@ export class ReportingService {
 
   async getAdminMangerData(managerId: number) {
     try {
-      const managers = await this.prisma.user.findMany({
+      const manager = await this.prisma.user.findMany({
         where: {
           id: managerId,
           role: 'Manager',
@@ -323,7 +323,7 @@ export class ReportingService {
         },
       });
 
-      const report = managers.map((manager) => {
+      const report = manager.map((manager) => {
         const totalEvents = manager.events.length;
 
         const activeEvents = manager.events.filter(

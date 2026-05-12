@@ -8,8 +8,7 @@ import {
   Prisma,
   SeatHoldStatus,
 } from 'src/generated/prisma/client';
-
-import { PaymentsService } from 'src/payments/payments.service';
+import { PaymentsService } from 'src/payments';
 
 @Injectable()
 export class BookingsService {

@@ -7,11 +7,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-
-import { BookingsService } from './bookings.service';
-
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
@@ -19,8 +15,8 @@ import {
   RolesGuard,
   UserType,
 } from '@Common';
-
-import { CreateBookingDto } from './dto/create-booking.dto';
+import { CreateBookingDto } from './dto';
+import { BookingsService } from './bookings.service';
 
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
