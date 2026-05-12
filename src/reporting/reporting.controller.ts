@@ -1,4 +1,11 @@
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ReportingService } from './reporting.service';
 import {
   AuthenticatedRequest,
@@ -23,6 +30,20 @@ export class ReportingController {
   @Roles(UserType.Admin)
   getAdminDashboardData() {
     return this.reportingService.getAdminDashboard();
+  }
+
+  @Roles(UserType.Admin)
+  @Get('admin/manager-wise-report')
+  @Roles(UserType.Admin)
+  getAdminMangerWiseData() {
+    return this.reportingService.getManagerWiseReport();
+  }
+
+  @Roles(UserType.Admin)
+  @Get('admin/manager-report/:managerId')
+  @Roles(UserType.Admin)
+  getAdminMangerData(@Param('managerId', ParseIntPipe) managerId: number) {
+    return this.reportingService.getAdminMangerData(managerId);
   }
 
   @Get('manager/dashboard')

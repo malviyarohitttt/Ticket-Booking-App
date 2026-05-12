@@ -1,3 +1,16 @@
+  @Get('test/:id')
+  test() {
+    return 'Test';
+  }
+
+  @Get('test/hello')
+  hello() {
+    return 'Hello';
+  }
+
+
+git commit -m "Scheduling modules added" --no-verify
+
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 

@@ -207,6 +207,193 @@ export class ReportingService {
     }
   }
 
+  async getManagerWiseReport() {
+    try {
+      const managers = await this.prisma.user.findMany({
+        where: {
+          role: 'Manager',
+        },
+        include: {
+          events: {
+            include: {
+              bookings: {
+                where: {
+                  status: 'Confirmed',
+                },
+                include: {
+                  splits: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const report = managers.map((manager) => {
+        const totalEvents = manager.events.length;
+
+        const activeEvents = manager.events.filter(
+          (event) => event.status === 'Active',
+        ).length;
+
+        const completedEvents = manager.events.filter(
+          (event) => event.status === 'Completed',
+        ).length;
+
+        const suspendedEvents = manager.events.filter(
+          (event) => event.status === 'Suspended',
+        ).length;
+
+        const allBookings = manager.events.flatMap((event) => event.bookings);
+
+        const totalRevenue = allBookings.reduce(
+          (sum, booking) => sum + Number(booking.total),
+          0,
+        );
+
+        const allSplits = allBookings.flatMap((booking) => booking.splits);
+
+        const managerEarnings = allSplits
+          .filter((split) => split.splitType === 'Manager')
+          .reduce((sum, split) => sum + Number(split.amount), 0);
+
+        const adminEarnings = allSplits
+          .filter((split) => split.splitType === 'Admin')
+          .reduce((sum, split) => sum + Number(split.amount), 0);
+
+        const totalSeats = manager.events.reduce(
+          (sum, event) => sum + event.totalSeats,
+          0,
+        );
+
+        const bookedSeats = manager.events.reduce(
+          (sum, event) => sum + event.bookedSeats,
+          0,
+        );
+        const occupancyRate =
+          totalSeats > 0 ? ((bookedSeats / totalSeats) * 100).toFixed(2) : '0';
+
+        return {
+          managerId: manager.id,
+          managerName: `${manager.firstname} ${manager.lastname}`,
+          email: manager.email,
+          totalEvents,
+          activeEvents,
+          completedEvents,
+          suspendedEvents,
+          totalBookings: bookedSeats,
+          totalRevenue,
+          managerEarnings,
+          adminEarnings,
+          totalSeats,
+          bookedSeats,
+          occupancyRate: `${occupancyRate}%`,
+        };
+      });
+      return {
+        status: 'success',
+        managers: report,
+      };
+    } catch (error) {
+      console.log(error);
+      throw new Error('Failed to generate manager-wise report');
+    }
+  }
+
+  async getAdminMangerData(managerId: number) {
+    try {
+      const managers = await this.prisma.user.findMany({
+        where: {
+          id: managerId,
+          role: 'Manager',
+        },
+        include: {
+          events: {
+            include: {
+              bookings: {
+                where: {
+                  status: 'Confirmed',
+                },
+                include: {
+                  splits: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const report = managers.map((manager) => {
+        const totalEvents = manager.events.length;
+
+        const activeEvents = manager.events.filter(
+          (event) => event.status === 'Active',
+        ).length;
+
+        const completedEvents = manager.events.filter(
+          (event) => event.status === 'Completed',
+        ).length;
+
+        const suspendedEvents = manager.events.filter(
+          (event) => event.status === 'Suspended',
+        ).length;
+
+        const allBookings = manager.events.flatMap((event) => event.bookings);
+
+        const totalRevenue = allBookings.reduce(
+          (sum, booking) => sum + Number(booking.total),
+          0,
+        );
+
+        const allSplits = allBookings.flatMap((booking) => booking.splits);
+
+        const managerEarnings = allSplits
+          .filter((split) => split.splitType === 'Manager')
+          .reduce((sum, split) => sum + Number(split.amount), 0);
+
+        const adminEarnings = allSplits
+          .filter((split) => split.splitType === 'Admin')
+          .reduce((sum, split) => sum + Number(split.amount), 0);
+
+        const totalSeats = manager.events.reduce(
+          (sum, event) => sum + event.totalSeats,
+          0,
+        );
+
+        const bookedSeats = manager.events.reduce(
+          (sum, event) => sum + event.bookedSeats,
+          0,
+        );
+        const occupancyRate =
+          totalSeats > 0 ? ((bookedSeats / totalSeats) * 100).toFixed(2) : '0';
+
+        return {
+          managerId: manager.id,
+          managerName: `${manager.firstname} ${manager.lastname}`,
+          email: manager.email,
+          totalEvents,
+          activeEvents,
+          completedEvents,
+          suspendedEvents,
+          totalBookings: bookedSeats,
+          totalRevenue,
+          managerEarnings,
+          adminEarnings,
+          totalSeats,
+          bookedSeats,
+          occupancyRate: `${occupancyRate}%`,
+        };
+      });
+      return {
+        status: 'success',
+        data: report,
+      };
+    } catch (error) {
+      console.log(error);
+      throw new Error('Failed to generate manager-wise report');
+    }
+  }
+
   async getManagerDashboard(managerId: number) {
     try {
       const eventManagerId = { managerId };
@@ -393,8 +580,6 @@ export class ReportingService {
         0,
       );
 
-      const recentEvents = eventWiseReport.slice(0, 5);
-
       return {
         status: 'success',
 
@@ -404,7 +589,7 @@ export class ReportingService {
           suspendedEvents,
           completedEvents,
           bookings: {
-            totalConfirmedBookings,
+            totalConfirmedBookings: totalConfirmedBookings._sum.quantity ?? 0,
             totalPendingBookings,
           },
           totalSales: sales._sum.total ?? 0,
@@ -415,8 +600,8 @@ export class ReportingService {
           bookedSeats,
           remainingSeats: totalSeats - bookedSeats,
           totalEstimatedLoss,
-          recentEvents,
-          eventWiseReport,
+          recentEvents: eventWiseReport.slice(0, 1),
+          eventWiseReport: eventWiseReport.slice(0, 1),
         },
       };
     } catch (error) {

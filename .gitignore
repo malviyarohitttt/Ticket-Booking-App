@@ -25,6 +25,8 @@ storage
 /coverage
 /.nyc_output
 
+test.doc
+
 # IDEs and editors
 /.idea
 .project
