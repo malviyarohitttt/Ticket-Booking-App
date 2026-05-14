@@ -1,7 +1,11 @@
-import { Controller, Get, Post, Body, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { WalletService } from './wallet.service';
+
 import { AuthenticatedRequest, JwtAuthGuard } from '@Common';
+
+import { WalletService } from './wallet.service';
+
 import { AddAmountRequestDto } from './dto';
 
 @ApiTags('Wallet & Transactions')
@@ -11,24 +15,18 @@ import { AddAmountRequestDto } from './dto';
 export class WalletController {
   constructor(private readonly walletService: WalletService) {}
 
-  @Post('deposit')
-  depositAmount(
-    @Req() req: AuthenticatedRequest,
-    @Body() data: AddAmountRequestDto,
-  ) {
-    const ctx = req.user;
-    return this.walletService.deposit(ctx, data);
-  }
-
   @Get('balance')
-  balance(@Req() req: AuthenticatedRequest) {
-    const ctx = req.user;
-    return this.walletService.balance(ctx);
+  getBalance(@Req() req: AuthenticatedRequest) {
+    return this.walletService.balance(req.user);
   }
 
   @Get('transactions')
-  transactions(@Req() req: AuthenticatedRequest) {
-    const ctx = req.user;
-    return this.walletService.transactions(ctx);
+  getTransactions(@Req() req: AuthenticatedRequest) {
+    return this.walletService.transactions(req.user);
+  }
+
+  @Post('deposit')
+  deposit(@Req() req: AuthenticatedRequest, @Body() data: AddAmountRequestDto) {
+    return this.walletService.deposit(req.user, data);
   }
 }

@@ -10,7 +10,9 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+
 import { ApiBearerAuth, ApiParam, ApiTags } from '@nestjs/swagger';
+
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
@@ -18,8 +20,11 @@ import {
   RolesGuard,
   UserType,
 } from '@Common';
+
 import { EventStatus } from 'src/generated/prisma/enums';
+
 import { CreateEventRequestDto, UpdateEventRequestDto } from './dto';
+
 import { EventService } from './event.service';
 
 @ApiTags('Event Management')
@@ -27,81 +32,89 @@ import { EventService } from './event.service';
 export class EventController {
   constructor(private readonly eventService: EventService) {}
 
-  getContext(req: AuthenticatedRequest) {
-    return req.user;
-  }
-
   @Get()
-  events() {
+  getEvents() {
     return this.eventService.allEvents();
   }
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserType.Manager)
-  @Post('create')
-  create(
-    @Req() req: AuthenticatedRequest,
-    @Body() data: CreateEventRequestDto,
-  ) {
-    const ctx = this.getContext(req);
-    return this.eventService.createEvent(ctx, data);
-  }
 
+  @Get(':eventId')
   @ApiParam({
     name: 'eventId',
     type: Number,
   })
+  getEvent(
+    @Param('eventId', ParseIntPipe)
+    eventId: number,
+  ) {
+    return this.eventService.event(eventId);
+  }
+
+  @Get(':eventId/bookings')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserType.Admin, UserType.Manager)
-  @Get('bookings/:eventId')
-  eventsBookings(@Param('eventId', ParseIntPipe) eventId: number) {
+  @ApiParam({
+    name: 'eventId',
+    type: Number,
+  })
+  getEventBookings(
+    @Param('eventId', ParseIntPipe)
+    eventId: number,
+  ) {
     return this.eventService.bookings(eventId);
   }
 
-  @ApiParam({
-    name: 'id',
-    type: Number,
-  })
-  @Get(':id')
-  event(@Param('id', ParseIntPipe) id: number) {
-    return this.eventService.event(id);
+  @Post()
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserType.Manager)
+  createEvent(
+    @Req() req: AuthenticatedRequest,
+    @Body() data: CreateEventRequestDto,
+  ) {
+    return this.eventService.createEvent(req.user, data);
   }
 
+  @Patch(':eventId')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserType.Manager)
   @ApiParam({
     name: 'eventId',
     type: Number,
   })
+  updateEvent(
+    @Req() req: AuthenticatedRequest,
+    @Param('eventId', ParseIntPipe)
+    eventId: number,
+    @Body() data: UpdateEventRequestDto,
+  ) {
+    return this.eventService.updateEvent(req.user, eventId, data);
+  }
+
+  @Patch(':eventId/status/:status')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserType.Manager)
-  @Patch(':eventId')
-  update(
-    @Req() req: AuthenticatedRequest,
-    @Param('eventId', ParseIntPipe) eventId: number,
-    @Body() data: UpdateEventRequestDto,
-  ) {
-    const ctx = this.getContext(req);
-    return this.eventService.updateEvent(ctx, eventId, data);
-  }
-
   @ApiParam({
-    name: 'id',
+    name: 'eventId',
     type: Number,
   })
   @ApiParam({
     name: 'status',
     enum: EventStatus,
   })
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserType.Manager)
-  @Patch('status/:id/:status')
-  async updateStatus(
+  async updateEventStatus(
     @Req() req: AuthenticatedRequest,
-    @Param('id', ParseIntPipe) id: number,
-    @Param('status', new ParseEnumPipe(EventStatus)) status: EventStatus,
+    @Param('eventId', ParseIntPipe)
+    eventId: number,
+    @Param('status', new ParseEnumPipe(EventStatus))
+    status: EventStatus,
   ) {
-    const ctx = this.getContext(req);
-    await this.eventService.updateEventStatus(ctx, id, status);
-    return { status: 'success' };
+    await this.eventService.updateEventStatus(req.user, eventId, status);
+
+    return {
+      status: 'success',
+    };
   }
 }

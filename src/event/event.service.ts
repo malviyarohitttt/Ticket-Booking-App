@@ -129,7 +129,7 @@ export class EventService {
     });
 
     if (!(bookings.length > 0)) {
-      throw new Error('No bookings yet for this event!');
+      throw new Error('No bookings for this event!');
     }
     return { status: 'success', bookings };
   }

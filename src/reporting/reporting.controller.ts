@@ -6,6 +6,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
@@ -13,50 +14,70 @@ import {
   RolesGuard,
   UserType,
 } from '@Common';
-import { ApiBearerAuth } from '@nestjs/swagger';
 import { ReportingService } from './reporting.service';
 
 @ApiBearerAuth()
+@ApiTags('Reporting')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('reporting')
 export class ReportingController {
   constructor(private readonly reportingService: ReportingService) {}
 
-  getCtx(req: AuthenticatedRequest) {
-    return req.user;
-  }
-
   @Get('admin/dashboard')
   @Roles(UserType.Admin)
-  getAdminDashboardData() {
-    return this.reportingService.getAdminDashboard();
+  getAdminDashboard() {
+    return this.reportingService.getAdminDashboardReport();
   }
 
+  @Get('admin/managers')
   @Roles(UserType.Admin)
-  @Get('admin/manager-wise-report')
-  @Roles(UserType.Admin)
-  getAdminMangerWiseData() {
-    return this.reportingService.getManagerWiseReport();
+  getAdminManagersReport() {
+    return this.reportingService.getAdminManagerWiseReport();
   }
 
+  @Get('admin/managers/:managerId')
   @Roles(UserType.Admin)
-  @Get('admin/manager-report/:managerId')
+  getAdminManagerReport(
+    @Param('managerId', ParseIntPipe)
+    managerId: number,
+  ) {
+    return this.reportingService.getAdminManagerReport(managerId);
+  }
+
+  @Get('admin/events')
   @Roles(UserType.Admin)
-  getAdminMangerData(@Param('managerId', ParseIntPipe) managerId: number) {
-    return this.reportingService.getAdminMangerData(managerId);
+  getAdminEventsReport() {
+    return this.reportingService.getAdminEventWiseReport();
+  }
+
+  @Get('admin/events/:eventId')
+  @Roles(UserType.Admin)
+  getAdminEventReport(
+    @Param('eventId', ParseIntPipe)
+    eventId: number,
+  ) {
+    return this.reportingService.getAdminEventReport(eventId);
   }
 
   @Get('manager/dashboard')
   @Roles(UserType.Manager)
-  getManagerDashboardData(@Req() req: AuthenticatedRequest) {
-    const ctx = this.getCtx(req);
-    return this.reportingService.getManagerDashboard(ctx.id);
+  getManagerDashboard(@Req() req: AuthenticatedRequest) {
+    return this.reportingService.getManagerDashboardReport(req.user.id);
   }
 
-  @Get('manager/event-wise-report')
+  @Get('manager/events')
   @Roles(UserType.Manager)
-  getManagerEventWiseReport(@Req() req: AuthenticatedRequest) {
-    const ctx = this.getCtx(req);
-    return this.reportingService.getManagerEventWiseReport(ctx.id);
+  getManagerEventsReport(@Req() req: AuthenticatedRequest) {
+    return this.reportingService.getManagerEventWiseReport(req.user.id);
+  }
+
+  @Get('manager/events/:eventId')
+  @Roles(UserType.Manager)
+  getManagerEventReport(
+    @Param('eventId', ParseIntPipe)
+    eventId: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.reportingService.getManagerEventReport(req.user, eventId);
   }
 }

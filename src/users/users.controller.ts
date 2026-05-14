@@ -12,17 +12,21 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+
 import { ApiBearerAuth, ApiParam, ApiTags } from '@nestjs/swagger';
+
 import {
+  AccessGuard,
   AuthenticatedRequest,
   BaseController,
   JwtAuthGuard,
+  Roles,
   RolesGuard,
   UserType,
-  Roles,
-  AccessGuard,
 } from '@Common';
-import { UsersService } from './users.service';
+
+import { UserRoles, UserStatus } from '../generated/prisma/client';
+
 import {
   ChangePasswordRequestDto,
   GetUsersRequestDto,
@@ -30,9 +34,10 @@ import {
   UpdateProfileImageRequestDto,
   UpdateUserProfileRequestDto,
 } from './dto';
-import { UserRoles, UserStatus } from '../generated/prisma/client';
 
-@ApiTags('User/Manager Management')
+import { UsersService } from './users.service';
+
+@ApiTags('User Management')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, AccessGuard)
 @Controller('users')
@@ -41,62 +46,38 @@ export class UsersController extends BaseController {
     super();
   }
 
+  @Get()
   @Roles(UserType.Admin)
   @UseGuards(RolesGuard)
-  @Get()
-  async getUsers(@Query() query: GetUsersRequestDto) {
-    return await this.usersService.getAll({
+  getUsers(@Query() query: GetUsersRequestDto) {
+    return this.usersService.getAll({
       search: query.search,
       skip: query.skip,
       take: query.take,
     });
   }
 
-  @Roles(UserType.Manager)
-  @UseGuards(RolesGuard)
-  @Get('events')
-  async getMyEvents(@Req() req: AuthenticatedRequest) {
-    const ctx = this.getContext(req);
-    return await this.usersService.myEvents(ctx.user);
-  }
-
-  @Get('purchase-history')
-  @Roles(UserType.User)
-  @UseGuards(RolesGuard)
-  getUserPurchaseHistory(@Req() req: AuthenticatedRequest) {
-    const ctx = this.getContext(req);
-    return this.usersService.getUserPurchaseHistory(ctx.user.id);
-  }
-
-  @Get('my-bookings')
-  @Roles(UserType.User)
-  @UseGuards(RolesGuard)
-  getMyBookings(@Req() req: AuthenticatedRequest) {
-    const ctx = this.getContext(req);
-    return this.usersService.getMyBookings(ctx.user.id);
-  }
-
   @Get('me')
   @Roles(UserType.User, UserType.Manager)
   @UseGuards(RolesGuard)
-  async getProfile(@Req() req: AuthenticatedRequest) {
-    const ctx = this.getContext(req);
-    return await this.usersService.getProfile(ctx.user.id);
+  getProfile(@Req() req: AuthenticatedRequest) {
+    return this.usersService.getProfile(req.user.id);
   }
 
   @Patch('me')
   @Roles(UserType.User, UserType.Manager)
   @UseGuards(RolesGuard)
-  async updateProfileDetails(
+  async updateProfile(
     @Req() req: AuthenticatedRequest,
-    @Body() data: UpdateProfileDetailsRequestDto,
+    @Body()
+    data: UpdateProfileDetailsRequestDto,
   ) {
     if (data.mobile && (!data.dialCode || !data.country)) {
       throw new BadRequestException();
     }
-    const ctx = this.getContext(req);
+
     await this.usersService.updateProfileDetails({
-      userId: ctx.user.id,
+      userId: req.user.id,
       username: data.username,
       firstname: data.firstname,
       lastname: data.lastname,
@@ -105,38 +86,91 @@ export class UsersController extends BaseController {
       mobile: data.mobile,
       country: data.country,
     });
-    return { status: 'success' };
+
+    return {
+      status: 'success',
+    };
   }
 
-  @Roles(UserType.Admin)
+  @Post('me/profile-image')
+  @Roles(UserType.User, UserType.Manager)
   @UseGuards(RolesGuard)
-  @ApiParam({
-    name: 'userId',
-    type: Number,
-    description:
-      'Unique identifier of the user whose profile needs to be fetched',
-    example: 7,
-  })
-  @Get(':userId')
-  async getUserProfile(@Param('userId', ParseIntPipe) userId: number) {
-    return await this.usersService.getProfile(userId);
-  }
-
-  @Roles(UserType.Admin)
-  @UseGuards(RolesGuard)
-  @ApiParam({
-    name: 'userId',
-    type: Number,
-    description:
-      'Unique identifier of the user whose account details will be updated',
-    example: 7,
-  })
-  @Patch(':userId')
-  async updateUserProfileDetails(
-    @Param('userId', ParseIntPipe) userId: number,
-    @Body() data: UpdateUserProfileRequestDto,
+  updateProfileImage(
+    @Req() req: AuthenticatedRequest,
+    @Body()
+    data: UpdateProfileImageRequestDto,
   ) {
-    return await this.usersService.updateProfileDetailsByAdministrator({
+    return this.usersService.updateProfileImage(req.user.id, data.profileImage);
+  }
+
+  @Post('me/change-password')
+  @Roles(UserType.User, UserType.Manager)
+  @UseGuards(RolesGuard)
+  async changePassword(
+    @Req() req: AuthenticatedRequest,
+    @Body()
+    data: ChangePasswordRequestDto,
+  ) {
+    await this.usersService.changePassword(
+      req.user.id,
+      data.oldPassword,
+      data.newPassword,
+    );
+
+    return {
+      status: 'success',
+    };
+  }
+
+  @Get('me/bookings')
+  @Roles(UserType.User)
+  @UseGuards(RolesGuard)
+  getMyBookings(@Req() req: AuthenticatedRequest) {
+    return this.usersService.getMyBookings(req.user.id);
+  }
+
+  @Get('me/purchase-history')
+  @Roles(UserType.User)
+  @UseGuards(RolesGuard)
+  getPurchaseHistory(@Req() req: AuthenticatedRequest) {
+    return this.usersService.getUserPurchaseHistory(req.user.id);
+  }
+
+  @Get('me/events')
+  @Roles(UserType.Manager)
+  @UseGuards(RolesGuard)
+  getMyEvents(@Req() req: AuthenticatedRequest) {
+    return this.usersService.myEvents(req.user);
+  }
+
+  @Get(':userId')
+  @Roles(UserType.Admin)
+  @UseGuards(RolesGuard)
+  @ApiParam({
+    name: 'userId',
+    type: Number,
+  })
+  getUserProfile(
+    @Param('userId', ParseIntPipe)
+    userId: number,
+  ) {
+    return this.usersService.getProfile(userId);
+  }
+
+  @Patch(':userId')
+  @Roles(UserType.Admin)
+  @UseGuards(RolesGuard)
+  @ApiParam({
+    name: 'userId',
+    type: Number,
+  })
+  updateUserProfile(
+    @Param('userId', ParseIntPipe)
+    userId: number,
+    @Body()
+    data: UpdateUserProfileRequestDto,
+  ) {
+    return this.usersService.updateProfileDetailsByAdministrator({
       userId,
       username: data.username,
       firstname: data.firstname,
@@ -149,66 +183,51 @@ export class UsersController extends BaseController {
     });
   }
 
-  @Roles(UserType.User, UserType.Manager)
+  @Post(':userId/status/:status')
+  @Roles(UserType.Admin)
   @UseGuards(RolesGuard)
-  @Post('me/profile-image')
-  updateProfileImage(
-    @Req() req: AuthenticatedRequest,
-    @Body() data: UpdateProfileImageRequestDto,
-  ) {
-    const ctx = this.getContext(req);
-    return this.usersService.updateProfileImage(ctx.user.id, data.profileImage);
-  }
-
-  @Roles(UserType.User, UserType.Manager)
-  @UseGuards(RolesGuard)
-  @Post('me/change-password')
-  async changePassword(
-    @Req() req: AuthenticatedRequest,
-    @Body() data: ChangePasswordRequestDto,
-  ) {
-    const ctx = this.getContext(req);
-    await this.usersService.changePassword(
-      ctx.user.id,
-      data.oldPassword,
-      data.newPassword,
-    );
-    return { status: 'success' };
-  }
-
+  @ApiParam({
+    name: 'userId',
+    type: Number,
+  })
   @ApiParam({
     name: 'status',
     enum: UserStatus,
-    example: UserStatus.Active,
   })
-  @Roles(UserType.Admin)
-  @UseGuards(RolesGuard)
-  @Post('status/:userId/:status')
-  async setUserStatus(
-    @Param('userId', ParseIntPipe) userId: number,
-    @Param('status', new ParseEnumPipe(UserStatus)) status: UserStatus,
+  async updateUserStatus(
+    @Param('userId', ParseIntPipe)
+    userId: number,
+    @Param('status', new ParseEnumPipe(UserStatus))
+    status: UserStatus,
   ) {
     await this.usersService.setStatus(userId, status);
-    return { status: 'success' };
+
+    return {
+      status: 'success',
+    };
   }
 
+  @Post(':userId/role/:role')
+  @Roles(UserType.Admin)
+  @UseGuards(RolesGuard)
   @ApiParam({
     name: 'userId',
-    example: 1,
+    type: Number,
   })
   @ApiParam({
     name: 'role',
     enum: UserRoles,
   })
-  @Roles(UserType.Admin)
-  @UseGuards(RolesGuard)
-  @Post('role/:userId/:role')
-  async setUserRole(
-    @Param('userId', ParseIntPipe) userId: number,
-    @Param('role', new ParseEnumPipe(UserRoles)) role: UserRoles,
+  async updateUserRole(
+    @Param('userId', ParseIntPipe)
+    userId: number,
+    @Param('role', new ParseEnumPipe(UserRoles))
+    role: UserRoles,
   ) {
     await this.usersService.setRole(userId, role);
 
-    return { status: 'success' };
+    return {
+      status: 'success',
+    };
   }
 }

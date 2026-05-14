@@ -3,8 +3,6 @@
     return 'Test';
   }
 
-  Hello
-
   @Get('test/hello')
   hello() {
     return 'Hello';

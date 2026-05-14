@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
+import { AuthenticatedUser } from '@Common';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from 'src/generated/prisma/client';
 import { PrismaService } from 'src/prisma';
@@ -7,7 +8,7 @@ import { PrismaService } from 'src/prisma';
 export class ReportingService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getAdminDashboard() {
+  async getAdminDashboardReport() {
     try {
       const [
         totalEvents,
@@ -211,7 +212,7 @@ export class ReportingService {
     }
   }
 
-  async getManagerWiseReport() {
+  async getAdminManagerWiseReport() {
     try {
       const managers = await this.prisma.user.findMany({
         where: {
@@ -304,22 +305,31 @@ export class ReportingService {
     }
   }
 
-  async getAdminMangerData(managerId: number) {
+  async getAdminManagerReport(managerId: number) {
     try {
-      const manager = await this.prisma.user.findMany({
+      const manager = await this.prisma.user.findFirst({
         where: {
           id: managerId,
           role: 'Manager',
         },
         include: {
           events: {
-            include: {
+            select: {
+              status: true,
+              totalSeats: true,
+              bookedSeats: true,
               bookings: {
                 where: {
                   status: 'Confirmed',
                 },
-                include: {
-                  splits: true,
+                select: {
+                  total: true,
+                  splits: {
+                    select: {
+                      splitType: true,
+                      amount: true,
+                    },
+                  },
                 },
               },
             },
@@ -327,29 +337,112 @@ export class ReportingService {
         },
       });
 
-      const report = manager.map((manager) => {
-        const totalEvents = manager.events.length;
+      if (!manager) {
+        throw new Error('Manager not found');
+      }
 
-        const activeEvents = manager.events.filter(
-          (event) => event.status === 'Active',
-        ).length;
+      let activeEvents = 0;
+      let completedEvents = 0;
+      let suspendedEvents = 0;
 
-        const completedEvents = manager.events.filter(
-          (event) => event.status === 'Completed',
-        ).length;
+      let totalRevenue = 0;
+      let managerEarnings = 0;
+      let adminEarnings = 0;
 
-        const suspendedEvents = manager.events.filter(
-          (event) => event.status === 'Suspended',
-        ).length;
+      let totalSeats = 0;
+      let bookedSeats = 0;
 
-        const allBookings = manager.events.flatMap((event) => event.bookings);
+      for (const event of manager.events) {
+        if (event.status === 'Active') activeEvents++;
+        else if (event.status === 'Completed') completedEvents++;
+        else if (event.status === 'Suspended') suspendedEvents++;
 
-        const totalRevenue = allBookings.reduce(
+        totalSeats += event.totalSeats;
+        bookedSeats += event.bookedSeats;
+
+        for (const booking of event.bookings) {
+          totalRevenue += Number(booking.total);
+
+          for (const split of booking.splits) {
+            if (split.splitType === 'Manager') {
+              managerEarnings += Number(split.amount);
+            } else if (split.splitType === 'Admin') {
+              adminEarnings += Number(split.amount);
+            }
+          }
+        }
+      }
+
+      const occupancyRate =
+        totalSeats > 0 ? ((bookedSeats / totalSeats) * 100).toFixed(2) : '0.00';
+
+      return {
+        status: 'success',
+        data: {
+          managerId: manager.id,
+          managerName: `${manager.firstname} ${manager.lastname}`,
+          email: manager.email,
+
+          totalEvents: manager.events.length,
+          activeEvents,
+          completedEvents,
+          suspendedEvents,
+
+          totalBookings: bookedSeats,
+
+          totalRevenue,
+          managerEarnings,
+          adminEarnings,
+
+          totalSeats,
+          bookedSeats,
+
+          occupancyRate: `${occupancyRate}%`,
+        },
+      };
+    } catch (error) {
+      console.log(error);
+      throw new Error('Failed to generate manager report');
+    }
+  }
+
+  async getAdminEventWiseReport() {
+    try {
+      const events = await this.prisma.event.findMany({
+        include: {
+          bookings: {
+            include: {
+              splits: true,
+            },
+          },
+          manager: {
+            select: {
+              id: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      const report = events.map((event) => {
+        const confirmedBookings = event.bookings.filter(
+          (booking) => booking.status === 'Confirmed',
+        );
+
+        const pendingBookings = event.bookings.filter(
+          (booking) => booking.status === 'Pending',
+        );
+
+        const totalSales = confirmedBookings.reduce(
           (sum, booking) => sum + Number(booking.total),
           0,
         );
 
-        const allSplits = allBookings.flatMap((booking) => booking.splits);
+        const allSplits = confirmedBookings.flatMap(
+          (booking) => booking.splits,
+        );
 
         const managerEarnings = allSplits
           .filter((split) => split.splitType === 'Manager')
@@ -359,46 +452,155 @@ export class ReportingService {
           .filter((split) => split.splitType === 'Admin')
           .reduce((sum, split) => sum + Number(split.amount), 0);
 
-        const totalSeats = manager.events.reduce(
-          (sum, event) => sum + event.totalSeats,
-          0,
-        );
+        const remainingSeats = event.totalSeats - event.bookedSeats;
 
-        const bookedSeats = manager.events.reduce(
-          (sum, event) => sum + event.bookedSeats,
-          0,
-        );
+        const estimatedLoss =
+          event.status === 'Completed'
+            ? remainingSeats * Number(event.price)
+            : 0;
+
         const occupancyRate =
-          totalSeats > 0 ? ((bookedSeats / totalSeats) * 100).toFixed(2) : '0';
+          event.totalSeats > 0
+            ? ((event.bookedSeats / event.totalSeats) * 100).toFixed(2)
+            : '0';
 
         return {
-          managerId: manager.id,
-          managerName: `${manager.firstname} ${manager.lastname}`,
-          email: manager.email,
-          totalEvents,
-          activeEvents,
-          completedEvents,
-          suspendedEvents,
-          totalBookings: bookedSeats,
-          totalRevenue,
+          eventId: event.id,
+          title: event.title,
+          performer: event.performer,
+          venue: event.venue,
+          city: event.city,
+          country: event.country,
+          eventDate: event.date,
+          eventStatus: event.status,
+          price: event.price,
+          totalSeats: event.totalSeats,
+          bookedSeats: event.bookedSeats,
+          remainingSeats,
+          occupancyRate: `${occupancyRate}%`,
+          totalConfirmedBookings: confirmedBookings.length,
+          totalPendingBookings: pendingBookings.length,
+          totalSales,
           managerEarnings,
           adminEarnings,
-          totalSeats,
-          bookedSeats,
-          occupancyRate: `${occupancyRate}%`,
+          estimatedLoss,
+          createdAt: event.createdAt,
         };
       });
+
       return {
         status: 'success',
-        data: report,
+        report,
       };
     } catch (error) {
-      console.log(error);
-      throw new Error('Failed to generate manager-wise report');
+      throw new Error('Failed to generate event-wise report');
     }
   }
 
-  async getManagerDashboard(managerId: number) {
+  async getAdminEventReport(eventId: number) {
+    try {
+      const event = await this.prisma.event.findUnique({
+        where: {
+          id: eventId,
+        },
+        include: {
+          manager: {
+            select: {
+              id: true,
+              firstname: true,
+              lastname: true,
+            },
+          },
+          bookings: {
+            select: {
+              status: true,
+              total: true,
+              splits: {
+                select: {
+                  splitType: true,
+                  amount: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!event) {
+        throw new Error('Event not found');
+      }
+
+      let totalConfirmedBookings = 0;
+      let totalPendingBookings = 0;
+      let totalSales = 0;
+      let managerEarnings = 0;
+      let adminEarnings = 0;
+
+      for (const booking of event.bookings) {
+        if (booking.status === 'Confirmed') {
+          totalConfirmedBookings++;
+          totalSales += Number(booking.total);
+
+          for (const split of booking.splits) {
+            if (split.splitType === 'Manager') {
+              managerEarnings += Number(split.amount);
+            } else if (split.splitType === 'Admin') {
+              adminEarnings += Number(split.amount);
+            }
+          }
+        }
+
+        if (booking.status === 'Pending') {
+          totalPendingBookings++;
+        }
+      }
+
+      const remainingSeats = event.totalSeats - event.bookedSeats;
+
+      const estimatedLoss =
+        event.status === 'Completed' ? remainingSeats * Number(event.price) : 0;
+
+      const occupancyRate =
+        event.totalSeats > 0
+          ? ((event.bookedSeats / event.totalSeats) * 100).toFixed(2)
+          : '0.00';
+
+      return {
+        status: 'success',
+        report: {
+          eventId: event.id,
+          title: event.title,
+          performer: event.performer,
+          venue: event.venue,
+          city: event.city,
+          country: event.country,
+          eventDate: event.date,
+          eventStatus: event.status,
+          price: event.price,
+          totalSeats: event.totalSeats,
+          bookedSeats: event.bookedSeats,
+          remainingSeats,
+          occupancyRate: `${occupancyRate}%`,
+          totalConfirmedBookings,
+          totalPendingBookings,
+          totalSales,
+          manager: {
+            id: event.manager?.id,
+            firstname: event.manager?.firstname,
+            lastname: event.manager?.lastname,
+          },
+          managerEarnings,
+          adminEarnings,
+          estimatedLoss,
+          createdAt: event.createdAt,
+        },
+      };
+    } catch (error) {
+      throw new Error('Failed to generate event report');
+    }
+  }
+
+  async getManagerDashboardReport(managerId: number) {
     try {
       const eventManagerId = { managerId };
       const confirmedBooking: Prisma.BookingWhereInput = {
@@ -700,6 +902,110 @@ export class ReportingService {
       };
     } catch (error) {
       throw new Error('Failed to generate manager event report');
+    }
+  }
+
+  async getManagerEventReport(ctx: AuthenticatedUser, eventId: number) {
+    try {
+      const event = await this.prisma.event.findUnique({
+        where: {
+          id: eventId,
+          managerId: ctx.id,
+        },
+        include: {
+          manager: {
+            select: {
+              id: true,
+              firstname: true,
+              lastname: true,
+            },
+          },
+          bookings: {
+            select: {
+              status: true,
+              total: true,
+              splits: {
+                select: {
+                  splitType: true,
+                  amount: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!event) {
+        throw new Error('Event not found');
+      }
+
+      let totalConfirmedBookings = 0;
+      let totalPendingBookings = 0;
+      let totalSales = 0;
+      let managerEarnings = 0;
+      let adminEarnings = 0;
+
+      for (const booking of event.bookings) {
+        if (booking.status === 'Confirmed') {
+          totalConfirmedBookings++;
+          totalSales += Number(booking.total);
+
+          for (const split of booking.splits) {
+            if (split.splitType === 'Manager') {
+              managerEarnings += Number(split.amount);
+            } else if (split.splitType === 'Admin') {
+              adminEarnings += Number(split.amount);
+            }
+          }
+        }
+
+        if (booking.status === 'Pending') {
+          totalPendingBookings++;
+        }
+      }
+
+      const remainingSeats = event.totalSeats - event.bookedSeats;
+
+      const estimatedLoss =
+        event.status === 'Completed' ? remainingSeats * Number(event.price) : 0;
+
+      const occupancyRate =
+        event.totalSeats > 0
+          ? ((event.bookedSeats / event.totalSeats) * 100).toFixed(2)
+          : '0.00';
+
+      return {
+        status: 'success',
+        report: {
+          eventId: event.id,
+          title: event.title,
+          performer: event.performer,
+          venue: event.venue,
+          city: event.city,
+          country: event.country,
+          eventDate: event.date,
+          eventStatus: event.status,
+          price: event.price,
+          totalSeats: event.totalSeats,
+          bookedSeats: event.bookedSeats,
+          remainingSeats,
+          occupancyRate: `${occupancyRate}%`,
+          totalConfirmedBookings,
+          totalPendingBookings,
+          totalSales,
+          manager: {
+            id: event.manager?.id,
+            firstname: event.manager?.firstname,
+            lastname: event.manager?.lastname,
+          },
+          managerEarnings,
+          adminEarnings,
+          estimatedLoss,
+          createdAt: event.createdAt,
+        },
+      };
+    } catch (error) {
+      throw new Error('Failed to get event report!');
     }
   }
 }
