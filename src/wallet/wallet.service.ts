@@ -14,171 +14,160 @@ export class WalletService {
   constructor(private readonly prisma: PrismaService) {}
 
   async deposit(ctx: AuthenticatedUser, data: AddAmountRequestDto) {
-    if (ctx.type === UserType.User || ctx.type === UserType.Manager) {
-      return await this.prisma.$transaction(async (tx) => {
-        const wallet = await tx.wallet.findUnique({
-          where: { userId: ctx.id },
-        });
+    const isAdmin = ctx.type == UserType.Admin;
 
-        if (!wallet) {
-          throw new Error('Wallet not found');
-        }
+    if (isAdmin) {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const adminWallet = await tx.adminWallet.findUnique({
+            where: { adminId: ctx.id },
+          });
 
-        const updatedWallet = await tx.wallet.update({
-          where: { userId: ctx.id },
-          data: {
-            balance: {
-              increment: data.amount,
+          if (!adminWallet) {
+            throw new Error('Admin wallet not found');
+          }
+
+          const updatedAdminWallet = await tx.adminWallet.update({
+            where: { adminId: ctx.id },
+            data: {
+              balance: {
+                increment: data.amount,
+              },
             },
-          },
-        });
+          });
 
-        await tx.transaction.create({
-          data: {
-            userId: ctx.id,
-            walletId: wallet.id,
-            amount: data.amount,
-            type: TxnType.Credit,
-            purpose: TxnPurpose.WalletTopup,
-            note: 'Wallet deposited successfully',
-          },
-        });
-
-        return {
-          status: 'success',
-          depositedAmount: data.amount,
-          newBalance: updatedWallet.balance,
-        };
-      });
-    }
-
-    if (ctx.type === UserType.Admin) {
-      return await this.prisma.$transaction(async (tx) => {
-        const adminWallet = await tx.adminWallet.findUnique({
-          where: { adminId: ctx.id },
-        });
-
-        if (!adminWallet) {
-          throw new Error('Admin wallet not found');
-        }
-
-        const updatedAdminWallet = await tx.adminWallet.update({
-          where: { adminId: ctx.id },
-          data: {
-            balance: {
-              increment: data.amount,
+          await tx.adminTransactions.create({
+            data: {
+              adminId: ctx.id,
+              adminWalletId: adminWallet.id,
+              amount: data.amount,
+              type: TxnType.Credit,
+              purpose: TxnPurpose.WalletTopup,
+              note: 'Admin wallet deposited successfully',
             },
-          },
-        });
+          });
 
-        await tx.adminTransactions.create({
-          data: {
-            adminId: ctx.id,
-            adminWalletId: adminWallet.id,
-            amount: data.amount,
-            type: TxnType.Credit,
-            purpose: TxnPurpose.WalletTopup,
-            note: 'Admin wallet deposited successfully',
-          },
-        });
+          return {
+            status: 'success',
+            depositedAmount: data.amount,
+            newBalance: updatedAdminWallet.balance,
+          };
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        },
+      );
+    } else {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const wallet = await tx.wallet.findUnique({
+            where: { userId: ctx.id },
+          });
 
-        return {
-          status: 'success',
-          depositedAmount: data.amount,
-          newBalance: updatedAdminWallet.balance,
-        };
-      });
+          if (!wallet) {
+            throw new Error('Wallet not found');
+          }
+
+          const updatedWallet = await tx.wallet.update({
+            where: { userId: ctx.id },
+            data: {
+              balance: {
+                increment: data.amount,
+              },
+            },
+          });
+
+          await tx.transaction.create({
+            data: {
+              userId: ctx.id,
+              walletId: wallet.id,
+              amount: data.amount,
+              type: TxnType.Credit,
+              purpose: TxnPurpose.WalletTopup,
+              note: 'Wallet deposited successfully',
+            },
+          });
+
+          return {
+            status: 'success',
+            depositedAmount: data.amount,
+            newBalance: updatedWallet.balance,
+          };
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        },
+      );
     }
-
-    throw new Error('Unauthorized access');
   }
 
   async balance(ctx: AuthenticatedUser) {
-    if (ctx.type === UserType.User || ctx.type === UserType.Manager) {
-      const wallet = await this.prisma.wallet.findUnique({
-        where: {
-          userId: ctx.id,
-        },
-        select: {
-          balance: true,
-        },
-      });
+    const isAdmin = ctx.type === UserType.Admin;
 
-      if (!wallet) {
-        throw new Error('Wallet not found');
-      }
+    const wallet = isAdmin
+      ? await this.prisma.adminWallet.findUnique({
+          where: {
+            adminId: ctx.id,
+          },
+          select: {
+            balance: true,
+          },
+        })
+      : await this.prisma.wallet.findUnique({
+          where: {
+            userId: ctx.id,
+          },
+          select: {
+            balance: true,
+          },
+        });
 
-      return {
-        status: 'success',
-        balance: wallet.balance,
-      };
+    if (!wallet) {
+      throw new Error('Wallet not found');
     }
-
-    if (ctx.type === UserType.Admin) {
-      const adminWallet = await this.prisma.adminWallet.findUnique({
-        where: {
-          adminId: ctx.id,
-        },
-        select: {
-          balance: true,
-        },
-      });
-
-      if (!adminWallet) {
-        throw new Error('Admin wallet not found');
-      }
-
-      return {
-        status: 'success',
-        balance: adminWallet.balance,
-      };
-    }
-
-    throw new Error('Unauthorized access');
+    return {
+      status: 'success',
+      balance: wallet.balance,
+    };
   }
 
   async transactions(ctx: AuthenticatedUser) {
-    if (ctx.type === UserType.Manager || ctx.type === UserType.User) {
-      const transaction = await this.prisma.transaction.findMany({
-        where: {
-          userId: ctx.id,
-        },
-        omit: {
-          referenceId: true,
-          walletId: true,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
+    const isAdmin = ctx.type === UserType.Admin;
 
-      return {
-        status: 'success',
-        transaction,
-      };
+    const transaction = isAdmin
+      ? await this.prisma.adminTransactions.findMany({
+          where: {
+            adminId: ctx.id,
+          },
+          omit: {
+            referenceId: true,
+            adminWalletId: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        })
+      : await this.prisma.transaction.findMany({
+          where: {
+            userId: ctx.id,
+          },
+          omit: {
+            referenceId: true,
+            walletId: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        });
+
+    if (transaction.length < 0) {
+      throw new Error('No transactions found!');
     }
 
-    if (ctx.type === UserType.Admin) {
-      const transaction = await this.prisma.adminTransactions.findMany({
-        where: {
-          adminId: ctx.id,
-        },
-        omit: {
-          referenceId: true,
-          adminWalletId: true,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
-
-      return {
-        status: 'success',
-        transaction,
-      };
-    }
-
-    throw new Error('Unauthorized access');
+    return {
+      status: 'success',
+      transaction,
+    };
   }
 
   async processBookingTransfer(
@@ -251,6 +240,18 @@ export class WalletService {
       },
     });
 
+    await tx.adminTransactions.create({
+      data: {
+        adminId: this.ADMIN_ID,
+        adminWalletId: adminWallet.id,
+        amount: adminShare,
+        type: TxnType.Credit,
+        purpose: TxnPurpose.PlatformCommission,
+        referenceId: bookingId,
+        note: 'Platform commission earned',
+      },
+    });
+
     await tx.wallet.update({
       where: {
         userId: managerId,
@@ -264,30 +265,6 @@ export class WalletService {
 
     await tx.transaction.create({
       data: {
-        userId: userId,
-        walletId: customerWallet.id,
-        amount: total,
-        type: TxnType.Debit,
-        purpose: TxnPurpose.BookingPayment,
-        referenceId: bookingId,
-        note: 'Ticket booking payment',
-      },
-    });
-
-    await tx.adminTransactions.create({
-      data: {
-        adminId: this.ADMIN_ID,
-        adminWalletId: adminWallet.id,
-        amount: adminShare,
-        type: TxnType.Credit,
-        purpose: TxnPurpose.PlatformCommission,
-        referenceId: bookingId,
-        note: 'Platform commission earned',
-      },
-    });
-
-    await tx.transaction.create({
-      data: {
         userId: managerId,
         walletId: managerWallet.id,
         amount: managerShare,
@@ -295,6 +272,18 @@ export class WalletService {
         purpose: TxnPurpose.EventManagerPayout,
         referenceId: bookingId,
         note: 'Event manager payout',
+      },
+    });
+
+    await tx.transaction.create({
+      data: {
+        userId: userId,
+        walletId: customerWallet.id,
+        amount: total,
+        type: TxnType.Debit,
+        purpose: TxnPurpose.BookingPayment,
+        referenceId: bookingId,
+        note: 'Ticket booking payment',
       },
     });
 

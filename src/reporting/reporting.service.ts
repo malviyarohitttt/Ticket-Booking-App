@@ -66,7 +66,11 @@ export class ReportingService {
           },
         }),
 
-        this.prisma.user.count(),
+        this.prisma.user.count({
+          where: {
+            role: 'User',
+          },
+        }),
 
         this.prisma.user.count({
           where: {

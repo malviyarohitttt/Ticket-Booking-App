@@ -1,7 +1,5 @@
 import { Injectable } from '@nestjs/common';
-
 import { PrismaService } from 'src/prisma';
-
 import {
   BookingStatus,
   EventStatus,
@@ -171,7 +169,7 @@ export class BookingsService {
     );
   }
 
-  async processPayment(userId: number, holdId: number) {
+  async book(userId: number, holdId: number) {
     return this.prisma.$transaction(
       async (tx) => {
         const holdRows = await tx.$queryRaw<any[]>`

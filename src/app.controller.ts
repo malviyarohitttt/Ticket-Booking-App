@@ -1,18 +1,33 @@
 import {
   Controller,
+  Get,
   ParseFilePipeBuilder,
   Post,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiBody, ApiTags } from '@nestjs/swagger';
-import { StorageService, File, JwtAuthGuard, AccessGuard } from '@Common';
+import {
+  StorageService,
+  File,
+  JwtAuthGuard,
+  AccessGuard,
+  AuthenticatedRequest,
+} from '@Common';
 
 @Controller()
 export class AppController {
   constructor(private readonly storageService: StorageService) {}
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('test/current-user')
+  currentUser(@Req() req: AuthenticatedRequest) {
+    return req.user;
+  }
 
   @ApiTags('Storage')
   @ApiBearerAuth()

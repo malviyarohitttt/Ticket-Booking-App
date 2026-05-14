@@ -30,12 +30,10 @@ export class BookingsController {
   async holdSeats(
     @Query()
     query: CreateBookingDto,
-
     @Req()
     req: AuthenticatedRequest,
   ) {
     const ctx = req.user;
-
     return this.bookingsService.holdSeats(
       ctx.id,
       query.eventId,
@@ -51,6 +49,6 @@ export class BookingsController {
     req: AuthenticatedRequest,
   ) {
     const ctx = req.user;
-    return this.bookingsService.processPayment(ctx.id, holdId);
+    return this.bookingsService.book(ctx.id, holdId);
   }
 }
