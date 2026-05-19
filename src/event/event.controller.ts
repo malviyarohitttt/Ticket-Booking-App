@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -26,6 +27,7 @@ import { EventStatus } from 'src/generated/prisma/enums';
 import { CreateEventRequestDto, UpdateEventRequestDto } from './dto';
 
 import { EventService } from './event.service';
+import { GetEventsRequestDto } from './dto/get-events-request.dto';
 
 @ApiTags('Event Management')
 @Controller('events')
@@ -33,8 +35,12 @@ export class EventController {
   constructor(private readonly eventService: EventService) {}
 
   @Get()
-  getEvents() {
-    return this.eventService.allEvents();
+  getEvents(@Query() query: GetEventsRequestDto) {
+    return this.eventService.allEvents({
+      search: query.search,
+      skip: query.skip,
+      take: query.take,
+    });
   }
 
   @Get(':eventId')

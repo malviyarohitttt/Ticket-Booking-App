@@ -5,16 +5,95 @@ import { CreateEventRequestDto } from './dto/create-event-request-dto';
 import { PrismaService } from 'src/prisma';
 import { UpdateEventRequestDto } from './dto/update-event-request-dto';
 import { EventStatus } from 'src/generated/prisma/enums';
+import { Event, Prisma } from 'src/generated/prisma/client';
 
 @Injectable()
 export class EventService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async allEvents() {
-    const events = await this.prisma.event.findMany({
-      orderBy: [{ createdAt: 'asc' }],
-    });
-    return events;
+  async allEvents(options?: {
+    search?: string;
+    skip?: number;
+    take?: number;
+  }): Promise<{
+    count: number;
+    skip: number;
+    take: number;
+    data: Event[];
+  }> {
+    const search = options?.search?.trim();
+    const skip = options?.skip ?? 0;
+    const take = options?.take ?? 10;
+
+    const where: Prisma.EventWhereInput = {};
+
+    if (search) {
+      const parts = search
+        .split(' ')
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+      where.AND = parts.map((part) => ({
+        OR: [
+          {
+            title: {
+              contains: part,
+              mode: 'insensitive',
+            },
+          },
+          {
+            description: {
+              contains: part,
+              mode: 'insensitive',
+            },
+          },
+          {
+            performer: {
+              contains: part,
+              mode: 'insensitive',
+            },
+          },
+          {
+            venue: {
+              contains: part,
+              mode: 'insensitive',
+            },
+          },
+          {
+            city: {
+              contains: part,
+              mode: 'insensitive',
+            },
+          },
+          {
+            country: {
+              contains: part,
+              mode: 'insensitive',
+            },
+          },
+        ],
+      }));
+    }
+
+    const [count, events] = await Promise.all([
+      this.prisma.event.count({ where }),
+
+      this.prisma.event.findMany({
+        where,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take,
+      }),
+    ]);
+
+    return {
+      count,
+      skip,
+      take,
+      data: events,
+    };
   }
 
   async event(id: number) {
@@ -134,24 +213,3 @@ export class EventService {
     return { status: 'success', bookings };
   }
 }
-
-// const seatData = [];
-
-// const rows = data.totalRows || 10;
-// const seatsPerRow = data.seatsPerRows || 10;
-
-// for (let i = 0; i < rows; i++) {
-//   const row = String.fromCharCode(65 + i);
-
-//   for (let seatNumber = 1; seatNumber <= seatsPerRow; seatNumber++) {
-//     seatData.push({
-//       event_id: event.id,
-//       row,
-//       seatNumber,
-//     });
-//   }
-// }
-
-// await tx.seat.createMany({
-//   data: seatData,
-// });

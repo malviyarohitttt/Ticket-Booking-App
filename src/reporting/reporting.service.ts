@@ -15,80 +15,44 @@ export class ReportingService {
         completedEvents,
         activeEvents,
         suspendedEvents,
-
         totalBookings,
         confirmedBookings,
         pendingBookings,
-
         totalUsers,
         totalManagers,
-
-        totalRevenue,
-
-        events,
+        splitAggregates,
+        recentEvents,
       ] = await Promise.all([
         this.prisma.event.count(),
-
-        this.prisma.event.count({
-          where: {
-            status: 'Completed',
-          },
-        }),
-
-        this.prisma.event.count({
-          where: {
-            status: 'Active',
-          },
-        }),
-
-        this.prisma.event.count({
-          where: {
-            status: 'Suspended',
-          },
-        }),
-
-        this.prisma.booking.count(),
-
+        this.prisma.event.count({ where: { status: 'Completed' } }),
+        this.prisma.event.count({ where: { status: 'Active' } }),
+        this.prisma.event.count({ where: { status: 'Suspended' } }),
         this.prisma.booking.aggregate({
-          where: {
-            status: 'Confirmed',
-          },
-          _sum: {
-            quantity: true,
-          },
+          _sum: { quantity: true },
         }),
 
         this.prisma.booking.aggregate({
-          where: {
-            status: 'Pending',
-          },
-          _sum: {
-            quantity: true,
-          },
-        }),
-
-        this.prisma.user.count({
-          where: {
-            role: 'User',
-          },
-        }),
-
-        this.prisma.user.count({
-          where: {
-            role: 'Manager',
-          },
+          where: { status: 'Confirmed' },
+          _sum: { quantity: true },
         }),
 
         this.prisma.booking.aggregate({
-          where: {
-            status: 'Confirmed',
-          },
-          _sum: {
-            total: true,
-          },
+          where: { status: 'Pending' },
+          _sum: { quantity: true },
+        }),
+
+        this.prisma.user.count({ where: { role: 'User' } }),
+
+        this.prisma.user.count({ where: { role: 'Manager' } }),
+
+        this.prisma.revenueSplit.groupBy({
+          by: ['splitType'],
+          where: { booking: { status: 'Confirmed' } },
+          _sum: { amount: true },
         }),
 
         this.prisma.event.findMany({
+          take: 10,
           include: {
             manager: {
               select: {
@@ -99,35 +63,36 @@ export class ReportingService {
               },
             },
             bookings: {
-              where: {
-                status: 'Confirmed',
-              },
-              include: {
-                splits: true,
-              },
+              where: { status: 'Confirmed' },
+              include: { splits: true },
             },
           },
-          orderBy: {
-            createdAt: 'desc',
-          },
+          orderBy: { createdAt: 'desc' },
         }),
       ]);
 
-      const eventWiseReport = events.map((event) => {
+      const adminRevenue =
+        splitAggregates.find((s) => s.splitType === 'Admin')?._sum.amount ?? 0;
+
+      const managerRevenue =
+        splitAggregates.find((s) => s.splitType === 'Manager')?._sum.amount ??
+        0;
+
+      const eventWiseReport = recentEvents.map((event) => {
         const totalSales = event.bookings.reduce(
-          (sum: number, booking) => sum + Number(booking.total),
+          (sum, b) => sum + Number(b.total),
           0,
         );
 
-        const allSplits = event.bookings.flatMap((booking) => booking.splits);
+        const allSplits = event.bookings.flatMap((b) => b.splits);
 
         const adminEarnings = allSplits
-          .filter((split) => split.splitType === 'Admin')
-          .reduce((sum: number, split) => sum + Number(split.amount), 0);
+          .filter((s) => s.splitType === 'Admin')
+          .reduce((sum, s) => sum + Number(s.amount), 0);
 
         const managerEarnings = allSplits
-          .filter((split) => split.splitType === 'Manager')
-          .reduce((sum: number, split) => sum + Number(split.amount), 0);
+          .filter((s) => s.splitType === 'Manager')
+          .reduce((sum, s) => sum + Number(s.amount), 0);
 
         const remainingSeats = event.totalSeats - event.bookedSeats;
 
@@ -168,21 +133,6 @@ export class ReportingService {
         };
       });
 
-      const totalAdminRevenue = eventWiseReport.reduce(
-        (sum, event) => sum + event.adminEarnings,
-        0,
-      );
-
-      const totalManagerRevenue = eventWiseReport.reduce(
-        (sum, event) => sum + event.managerEarnings,
-        0,
-      );
-
-      const totalEstimatedLoss = eventWiseReport.reduce(
-        (sum, event) => sum + event.estimatedLoss,
-        0,
-      );
-
       return {
         status: 'success',
         dashboard: {
@@ -191,23 +141,21 @@ export class ReportingService {
             activeEvents,
             completedEvents,
             suspendedEvents,
-            totalBookings,
+            totalBookings: totalBookings._sum.quantity ?? 0,
             confirmedBookings: confirmedBookings._sum.quantity ?? 0,
             pendingBookings: pendingBookings._sum.quantity ?? 0,
             totalUsers,
             totalManagers,
-            totalRevenue: totalRevenue._sum.total || 0,
-            totalAdminRevenue,
-            totalManagerRevenue,
-            totalEstimatedLoss,
+            totalRevenue: Number(adminRevenue) + Number(managerRevenue),
+            totalAdminRevenue: Number(adminRevenue),
+            totalManagerRevenue: Number(managerRevenue),
           },
-          recentEvents: eventWiseReport.slice(0, 1),
-          eventWiseReport: eventWiseReport.slice(0, 1),
+          recentEvents: eventWiseReport,
+          eventWiseReport,
         },
       };
     } catch (error) {
-      console.log(error);
-
+      console.error(error);
       throw new Error('Failed to generate admin dashboard');
     }
   }
